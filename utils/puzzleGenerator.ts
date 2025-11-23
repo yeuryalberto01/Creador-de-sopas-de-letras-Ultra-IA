@@ -1,4 +1,4 @@
-import { Difficulty, GridCell, PlacedWord, GeneratedPuzzle, PuzzleTheme } from '../types';
+import { Difficulty, GridCell, PlacedWord, GeneratedPuzzle, PuzzleTheme, ShapeType } from '../types';
 
 // Simple Pseudo-Random Number Generator (Mulberry32)
 class SeededRNG {
@@ -53,72 +53,96 @@ const getAllowedDirections = (difficulty: Difficulty) => {
 const LETTERS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
 
 /**
+ * Checks if a coordinate is inside the requested shape mask.
+ * Coordinates are normalized -1 to 1 for calculation.
+ */
+const isInsideShape = (x: number, y: number, size: number, shape: ShapeType): boolean => {
+    if (shape === 'SQUARE') return true;
+
+    // Normalize to -1 to 1 range
+    const nx = (x / (size - 1)) * 2 - 1;
+    const ny = (y / (size - 1)) * 2 - 1;
+
+    if (shape === 'CIRCLE') {
+        return (nx * nx + ny * ny) <= 1.0;
+    }
+
+    if (shape === 'DIAMOND') {
+        return (Math.abs(nx) + Math.abs(ny)) <= 1.0;
+    }
+
+    if (shape === 'HEART') {
+        // Heart formula approximation
+        // (x^2 + y^2 - 1)^3 - x^2 * y^3 <= 0
+        // We flip Y because grid 0 is top
+        const fy = -ny * 1.2 + 0.3; // Adjust for grid aspect
+        const fx = nx * 1.2;
+        const a = fx * fx + fy * fy - 1;
+        return (a * a * a - fx * fx * fy * fy * fy) <= 0;
+    }
+
+    if (shape === 'STAR') {
+        // Simple 5-point star check using polar coordinates or polygon
+        // Using a simple distance metric from star arms is easier for grid
+        // This is a rough approximation
+        const r = Math.sqrt(nx*nx + ny*ny);
+        const theta = Math.atan2(ny, nx);
+        // Star boundary in polar: r(theta) = R / (cos(mod(theta, 2pi/5) - pi/5) / cos(pi/5))? No too complex
+        // Let's use two overlapping triangles logic or just a distance modulation
+        // r < 0.5 + 0.3 * cos(5 * theta)
+        return r < (0.4 + 0.3 * Math.cos(5 * theta + Math.PI/2)); // rotated
+    }
+
+    return true;
+};
+
+/**
  * Calculates a "Smart" grid size based on the words provided.
  * It ensures the longest word fits and maintains a good density ratio.
  */
 export const calculateSmartGridSize = (words: string[], difficulty: Difficulty): number => {
   if (words.length === 0) return 15;
 
-  // 1. Find the longest word length
   const longestWord = Math.max(...words.map(w => w.length));
-
-  // 2. Calculate total characters
   const totalChars = words.reduce((sum, w) => sum + w.length, 0);
 
-  // 3. Determine density factor based on difficulty
-  // Easy needs more space (lower density), Hard can be tighter.
-  // We invert logic here: Large grid = low density.
-  // Target Area = TotalChars * Multiplier.
   let areaMultiplier = 3.0; // Default (Medium)
-  if (difficulty === Difficulty.EASY) areaMultiplier = 4.0; // Lots of empty space
-  if (difficulty === Difficulty.HARD) areaMultiplier = 2.0; // Tighter
+  if (difficulty === Difficulty.EASY) areaMultiplier = 4.0; 
+  if (difficulty === Difficulty.HARD) areaMultiplier = 2.0;
 
   const minArea = totalChars * areaMultiplier;
   const minDimensionByArea = Math.ceil(Math.sqrt(minArea));
-
-  // 4. The absolute minimum is the longest word + padding
   const padding = 2; 
   const minDimensionByLength = longestWord + (difficulty === Difficulty.EASY ? 0 : padding);
 
-  // 5. Pick the larger of the two constraints, but clamp reasonably
   let idealSize = Math.max(minDimensionByLength, minDimensionByArea);
   
-  // 6. Hard constraints (Min 10, Max 25 usually)
-  idealSize = Math.max(10, Math.min(idealSize, 25));
+  // Hard constraints
+  idealSize = Math.max(12, Math.min(idealSize, 25));
 
   return idealSize;
 };
 
-/**
- * Generates a color theme based on a string (e.g., the Topic).
- * This ensures "Nature" gives greens, "Fire" gives reds, consistently.
- */
 export const generateThemeFromTopic = (topic: string): PuzzleTheme => {
-    // If no topic, return a standard blue
     if (!topic) {
         return {
-            primaryColor: '#4f46e5', // Indigo 600
-            secondaryColor: '#e0e7ff', // Indigo 100
+            primaryColor: '#4f46e5',
+            secondaryColor: '#e0e7ff', 
             textColor: '#000000',
             backgroundColor: '#ffffff'
         };
     }
-
-    // Hash the topic to get a Hue (0-360)
     let hash = 0;
     for (let i = 0; i < topic.length; i++) {
         hash = topic.charCodeAt(i) + ((hash << 5) - hash);
     }
     const hue = Math.abs(hash % 360);
-
-    // Create HSL strings
-    const primary = `hsl(${hue}, 70%, 40%)`;   // Darker, saturated
-    const secondary = `hsl(${hue}, 70%, 95%)`; // Very light background tint
-    
+    const primary = `hsl(${hue}, 70%, 40%)`;
+    const secondary = `hsl(${hue}, 70%, 95%)`;
     return {
         primaryColor: primary,
         secondaryColor: secondary,
-        textColor: '#0f172a', // Slate 900
+        textColor: '#0f172a', 
         backgroundColor: '#ffffff'
     };
 };
@@ -127,16 +151,20 @@ export const generatePuzzle = (
   size: number,
   words: string[],
   difficulty: Difficulty,
-  seedInput?: string
+  seedInput?: string,
+  shape: ShapeType = 'SQUARE',
+  hiddenMessage?: string
 ): GeneratedPuzzle => {
   
   const seed = seedInput || Math.random().toString(36).substring(2, 8).toUpperCase();
   const rng = new SeededRNG(seed);
 
+  // Initialize Grid with validity mask
   let grid: GridCell[][] = Array.from({ length: size }, (_, y) =>
     Array.from({ length: size }, (_, x) => ({
       letter: '',
       isWord: false,
+      isValid: isInsideShape(x, y, size, shape),
       x,
       y
     }))
@@ -147,10 +175,11 @@ export const generatePuzzle = (
   const directions = getAllowedDirections(difficulty);
   const sortedWords = [...words].sort((a, b) => b.length - a.length || a.localeCompare(b));
 
+  // Place Words
   for (const word of sortedWords) {
     let placed = false;
     let attempts = 0;
-    const maxAttempts = 150; // Increased attempts slightly
+    const maxAttempts = 200;
 
     while (!placed && attempts < maxAttempts) {
       attempts++;
@@ -158,9 +187,13 @@ export const generatePuzzle = (
       const startX = rng.nextInfo(size);
       const startY = rng.nextInfo(size);
 
+      // Early check: Is start point valid?
+      if (!grid[startY][startX].isValid) continue;
+
       const endX = startX + dir[0] * (word.length - 1);
       const endY = startY + dir[1] * (word.length - 1);
 
+      // Boundary Check
       if (endX < 0 || endX >= size || endY < 0 || endY >= size) continue;
 
       let fits = true;
@@ -168,6 +201,14 @@ export const generatePuzzle = (
         const x = startX + dir[0] * i;
         const y = startY + dir[1] * i;
         const cell = grid[y][x];
+        
+        // Mask Check: Every cell of the word must be inside the shape
+        if (!cell.isValid) {
+            fits = false; 
+            break;
+        }
+
+        // Collision Check
         if (cell.letter !== '' && cell.letter !== word[i]) {
           fits = false;
           break;
@@ -196,10 +237,24 @@ export const generatePuzzle = (
     }
   }
 
+  // Fill Empty Cells (Hidden Message Logic)
+  const cleanMessage = hiddenMessage 
+    ? hiddenMessage.toUpperCase().replace(/[^A-ZÑ]/g, '') 
+    : '';
+  
+  let messageIndex = 0;
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      if (grid[y][x].letter === '') {
-        grid[y][x].letter = LETTERS[rng.nextInfo(LETTERS.length)];
+      if (grid[y][x].isValid && grid[y][x].letter === '') {
+        if (cleanMessage && messageIndex < cleanMessage.length) {
+            // Use next letter from hidden message
+            grid[y][x].letter = cleanMessage[messageIndex];
+            messageIndex++;
+        } else {
+            // Random filler
+            grid[y][x].letter = LETTERS[rng.nextInfo(LETTERS.length)];
+        }
       }
     }
   }

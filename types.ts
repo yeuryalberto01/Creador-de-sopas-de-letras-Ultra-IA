@@ -4,10 +4,14 @@ export enum Difficulty {
   HARD = 'Difícil'
 }
 
+export type ShapeType = 'SQUARE' | 'CIRCLE' | 'HEART' | 'DIAMOND' | 'STAR';
+export type FontType = 'CLASSIC' | 'MODERN' | 'FUN' | 'SCHOOL';
+
 export interface GridCell {
   letter: string;
   isWord: boolean; // True if this cell is part of a placed word
   wordId?: string; // ID of the word this cell belongs to (for solution highlighting)
+  isValid: boolean; // True if inside the shape mask
   x: number;
   y: number;
 }
@@ -33,8 +37,8 @@ export interface PuzzleConfig {
   title: string;
   headerLeft: string;
   headerRight: string;
-  footerText?: string; // New: Custom brand text
-  pageNumber?: string; // New: Page numbering
+  footerText?: string;
+  pageNumber?: string;
   difficulty: Difficulty;
   gridSize: number;
   words: string[];
@@ -42,6 +46,10 @@ export interface PuzzleConfig {
   seed?: string; 
   styleMode: 'bw' | 'color'; 
   themeData?: PuzzleTheme;
+  // New Features
+  maskShape: ShapeType;
+  hiddenMessage?: string;
+  fontType: FontType;
 }
 
 export interface GeneratedPuzzle {

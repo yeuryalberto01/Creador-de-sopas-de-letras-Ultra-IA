@@ -3,10 +3,48 @@ import { generateWordListAI, generateThemeAI } from './services/aiService';
 import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
 import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
-import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush } from 'lucide-react';
+import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType } from './types';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, HelpCircle, Info, Heart, Circle, Square, MessageSquare, Gem, Star } from 'lucide-react';
 
 const INITIAL_WORDS = ['REACT', 'TYPESCRIPT', 'TAILWIND', 'GEMINI', 'DEEPSEEK', 'GROQ', 'API', 'DATABASE'];
+
+// --- Componente Tooltip Reutilizable ---
+// Fix: Define props interface and use React.FC to correctly handle children and key props in TypeScript
+interface TooltipProps {
+    text: string;
+    children: React.ReactNode;
+    position?: 'top' | 'bottom' | 'right';
+    className?: string;
+}
+
+const Tooltip: React.FC<TooltipProps> = ({ 
+    text, 
+    children, 
+    position = 'top', 
+    className = "" 
+}) => {
+  return (
+    <div className={`group relative flex items-center ${className}`}>
+      {children}
+      <div className={`
+        pointer-events-none absolute z-50 hidden group-hover:block 
+        w-48 bg-slate-950 text-white text-[11px] font-medium p-2 rounded-md shadow-2xl border border-slate-700
+        text-center leading-tight
+        ${position === 'top' ? 'bottom-full mb-2 left-1/2 -translate-x-1/2' : ''}
+        ${position === 'bottom' ? 'top-full mt-2 left-1/2 -translate-x-1/2' : ''}
+        ${position === 'right' ? 'left-full ml-2 top-1/2 -translate-y-1/2' : ''}
+      `}>
+        {text}
+        <div className={`
+            absolute border-4 border-transparent 
+            ${position === 'top' ? 'top-full left-1/2 -translate-x-1/2 border-t-slate-950' : ''}
+            ${position === 'bottom' ? 'bottom-full left-1/2 -translate-x-1/2 border-b-slate-950' : ''}
+            ${position === 'right' ? 'right-full top-1/2 -translate-y-1/2 border-r-slate-950' : ''}
+        `}></div>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   // --- Global Settings & Modals ---
@@ -33,6 +71,11 @@ export default function App() {
   const [styleMode, setStyleMode] = useState<'bw' | 'color'>('bw');
   const [themeData, setThemeData] = useState<PuzzleTheme | undefined>(undefined);
   
+  // --- New Expert Features ---
+  const [maskShape, setMaskShape] = useState<ShapeType>('SQUARE');
+  const [fontType, setFontType] = useState<FontType>('CLASSIC');
+  const [hiddenMessage, setHiddenMessage] = useState('');
+
   const [showSolution, setShowSolution] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   
@@ -50,27 +93,26 @@ export default function App() {
     // 1. Calculate Size
     let sizeToUse = gridSize;
     if (isSmartGrid) {
-        sizeToUse = calculateSmartGridSize(wordsToUse, difficulty);
+        // If shape is not square, we usually need more space to fit same words
+        let shapeMultiplier = maskShape === 'SQUARE' ? 1.0 : 1.3;
+        sizeToUse = Math.ceil(calculateSmartGridSize(wordsToUse, difficulty) * shapeMultiplier);
         setGridSize(sizeToUse);
     }
 
     // 2. Theme Logic
-    // If a theme is forced (loaded from DB), use it.
-    // Else if color mode is on, generate one if we don't have one or if topic changed
     if (forceTheme) {
         setThemeData(forceTheme);
     } else if (styleMode === 'color' && !themeData) {
-        // Fallback sync theme if AI didn't run
         const themeSource = topic || seedToUse || 'default';
         setThemeData(generateThemeFromTopic(themeSource));
     }
 
     // 3. Generate
-    const puzzle = generatePuzzle(sizeToUse, wordsToUse, difficulty, seedToUse);
+    const puzzle = generatePuzzle(sizeToUse, wordsToUse, difficulty, seedToUse, maskShape, hiddenMessage);
     setGeneratedPuzzle(puzzle);
     setCurrentSeed(puzzle.seed);
     
-  }, [gridSize, wordList, difficulty, seedInput, isSmartGrid, styleMode, topic, themeData]);
+  }, [gridSize, wordList, difficulty, seedInput, isSmartGrid, styleMode, topic, themeData, maskShape, hiddenMessage]);
 
   // Initial Load
   useEffect(() => {
@@ -85,15 +127,11 @@ export default function App() {
     setIsGeneratingAI(true);
 
     try {
-        // 1. Generate Words
         const newWords = await generateWordListAI(settings.logicAI, topic, 15, difficulty);
         
-        // 2. Generate Theme (if color mode)
         let newTheme: PuzzleTheme | null = null;
         if (styleMode === 'color') {
-             // We try AI generation for theme first
              newTheme = await generateThemeAI(settings.designAI, topic);
-             // Fallback to algorithmic if AI fails or returns null
              if (!newTheme) newTheme = generateThemeFromTopic(topic);
         }
 
@@ -102,7 +140,6 @@ export default function App() {
             setSeedInput(''); 
             if (newTheme) setThemeData(newTheme);
 
-            // Wait for state to settle then generate
             setTimeout(() => {
                 handleGeneratePuzzle(undefined, newWords, newTheme || undefined);
             }, 50);
@@ -123,7 +160,8 @@ export default function App() {
     const config: PuzzleConfig = {
         title, headerLeft, headerRight, footerText, pageNumber, 
         difficulty, gridSize, words: wordList, 
-        showSolution, seed: currentSeed, styleMode, themeData
+        showSolution, seed: currentSeed, styleMode, themeData,
+        maskShape, hiddenMessage, fontType
     };
     
     savePuzzleToLibrary(title, config, generatedPuzzle);
@@ -138,11 +176,16 @@ export default function App() {
       setPageNumber(record.config.pageNumber || "");
       setDifficulty(record.config.difficulty);
       setGridSize(record.config.gridSize);
-      setIsSmartGrid(false); // Fixed size from save
+      setIsSmartGrid(false); 
       setWordList(record.config.words);
       setSeedInput(record.config.seed || '');
       setStyleMode(record.config.styleMode);
       setThemeData(record.config.themeData);
+      
+      // New Features Load
+      setMaskShape(record.config.maskShape || 'SQUARE');
+      setHiddenMessage(record.config.hiddenMessage || '');
+      setFontType(record.config.fontType || 'CLASSIC');
       
       setGeneratedPuzzle(record.puzzleData);
       setCurrentSeed(record.puzzleData.seed);
@@ -175,11 +218,13 @@ export default function App() {
                 <Grid3X3 className="w-7 h-7" />
                 SopaCreator
             </h1>
-            <p className="text-slate-500 text-xs mt-1">Multi-API Suite v3.1</p>
+            <p className="text-slate-500 text-xs mt-1">Multi-API Suite v3.2 Pro</p>
           </div>
-          <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white">
-            <Settings2 className="w-5 h-5" />
-          </button>
+          <Tooltip text="Configurar claves API de IA (Gemini, DeepSeek, etc)" position="bottom">
+            <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white">
+                <Settings2 className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="space-y-5">
@@ -190,20 +235,24 @@ export default function App() {
               <BrainCircuit className="w-4 h-4" /> Generador AI
             </h2>
             <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="Tema (ej. Dinosaurios)..."
-                className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-              />
-              <button
-                onClick={handleAiGenerate}
-                disabled={isGeneratingAI || !topic}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg shadow-lg shadow-indigo-900/50 transition-all active:scale-95"
-              >
-                {isGeneratingAI ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-              </button>
+              <Tooltip text="Escribe un tema (ej. 'Dinosaurios') para generar palabras automáticamente." className="flex-1">
+                <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="Tema (ej. Dinosaurios)..."
+                    className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                />
+              </Tooltip>
+              <Tooltip text="Click para conectar con la IA y generar palabras sobre el tema.">
+                <button
+                    onClick={handleAiGenerate}
+                    disabled={isGeneratingAI || !topic}
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg shadow-lg shadow-indigo-900/50 transition-all active:scale-95"
+                >
+                    {isGeneratingAI ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+                </button>
+              </Tooltip>
             </div>
             
             {/* Word Manager */}
@@ -215,14 +264,17 @@ export default function App() {
                         onChange={(e) => setManualWord(e.target.value)}
                         placeholder="Agregar palabra..."
                         className="flex-1 bg-transparent border-b border-slate-700 px-2 py-1 text-xs outline-none focus:border-indigo-400"
+                        title="Escribe una palabra y presiona Enter para agregarla manualmente"
                     />
-                    <button type="submit" className="text-indigo-400 hover:text-white text-xs font-bold px-2">+</button>
+                    <Tooltip text="Añadir palabra manual">
+                        <button type="submit" className="text-indigo-400 hover:text-white text-xs font-bold px-2">+</button>
+                    </Tooltip>
                 </form>
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
                 {wordList.map((word) => (
                     <span key={word} className="bg-slate-800 text-[10px] px-2 py-1 rounded-full flex items-center gap-1 border border-slate-700 group">
                     {word}
-                    <button onClick={() => handleRemoveWord(word)} className="text-slate-500 group-hover:text-red-400 ml-1">&times;</button>
+                    <button onClick={() => handleRemoveWord(word)} className="text-slate-500 group-hover:text-red-400 ml-1" title="Eliminar palabra">&times;</button>
                     </span>
                 ))}
                 </div>
@@ -231,41 +283,110 @@ export default function App() {
             
           {/* Config Panels */}
           <div className="space-y-4">
+
+               {/* EXPERT FEATURES */}
+               <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 space-y-3">
+                 <div className="flex items-center gap-2 border-b border-slate-700 pb-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-yellow-400" />
+                    <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Edición Creativa</span>
+                 </div>
+                 
+                 {/* Shape Selection */}
+                 <div className="space-y-1">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Forma</label>
+                    <div className="flex gap-2">
+                        {[
+                            { id: 'SQUARE', icon: Square, label: 'Cuadrado' },
+                            { id: 'CIRCLE', icon: Circle, label: 'Círculo' },
+                            { id: 'HEART', icon: Heart, label: 'Corazón' },
+                            { id: 'DIAMOND', icon: Gem, label: 'Diamante' },
+                            { id: 'STAR', icon: Star, label: 'Estrella' }
+                        ].map((s) => (
+                            <Tooltip key={s.id} text={`Forma: ${s.label}`}>
+                                <button
+                                    onClick={() => { setMaskShape(s.id as ShapeType); setIsSmartGrid(true); }}
+                                    className={`p-1.5 rounded-md transition-all ${maskShape === s.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-500 hover:text-white'}`}
+                                >
+                                    <s.icon className="w-4 h-4" />
+                                </button>
+                            </Tooltip>
+                        ))}
+                    </div>
+                 </div>
+
+                 {/* Typography */}
+                 <div className="space-y-1">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Tipografía</label>
+                    <select 
+                        value={fontType} 
+                        onChange={(e) => setFontType(e.target.value as FontType)}
+                        className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-white"
+                    >
+                        <option value="CLASSIC">Clásica (Máquina de Escribir)</option>
+                        <option value="MODERN">Moderna (Robot Mono)</option>
+                        <option value="SCHOOL">Escolar (Sans Serif Limpia)</option>
+                        <option value="FUN">Divertida (A mano)</option>
+                    </select>
+                 </div>
+
+                 {/* Hidden Message */}
+                 <div className="space-y-1">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3"/> Mensaje Oculto
+                    </label>
+                    <Tooltip text="Frase secreta que aparecerá en los espacios vacíos (leyendo de izq a der)." position="top">
+                        <input 
+                            type="text" 
+                            value={hiddenMessage}
+                            onChange={(e) => setHiddenMessage(e.target.value)}
+                            placeholder="Ej. FELIZ CUMPLEAÑOS"
+                            className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-indigo-300 placeholder-slate-600"
+                        />
+                    </Tooltip>
+                 </div>
+              </div>
               
               {/* Appearance */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-500 uppercase">Apariencia</label>
+                <div className="flex items-center gap-2">
+                     <label className="text-xs font-semibold text-slate-500 uppercase">Apariencia</label>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
-                    <button
-                        onClick={() => { setStyleMode('bw'); }}
-                        className={`py-2 text-xs font-medium rounded-lg border transition-all ${styleMode === 'bw' ? 'bg-white text-slate-900 border-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                    >
-                        Clásico B/N
-                    </button>
-                    <button
-                        onClick={() => { setStyleMode('color'); }}
-                        className={`py-2 text-xs font-medium rounded-lg border transition-all flex items-center justify-center gap-1 ${styleMode === 'color' ? 'bg-gradient-to-r from-pink-500 to-violet-500 text-white border-transparent' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                    >
-                        <Paintbrush className="w-3 h-3" /> Color AI
-                    </button>
+                    <Tooltip text="Genera una versión limpia en blanco y negro, ideal para imprimir y ahorrar tinta.">
+                        <button
+                            onClick={() => { setStyleMode('bw'); }}
+                            className={`w-full py-2 text-xs font-medium rounded-lg border transition-all ${styleMode === 'bw' ? 'bg-white text-slate-900 border-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                        >
+                            Clásico B/N
+                        </button>
+                    </Tooltip>
+                    <Tooltip text="Genera un diseño colorido basado en la psicología del color del tema (ej. Fuego = Rojo).">
+                        <button
+                            onClick={() => { setStyleMode('color'); }}
+                            className={`w-full py-2 text-xs font-medium rounded-lg border transition-all flex items-center justify-center gap-1 ${styleMode === 'color' ? 'bg-gradient-to-r from-pink-500 to-violet-500 text-white border-transparent' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                        >
+                            <Paintbrush className="w-3 h-3" /> Color AI
+                        </button>
+                    </Tooltip>
                 </div>
               </div>
 
               {/* Difficulty & Grid */}
               <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 space-y-3">
                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-semibold text-slate-400">Dificultad</span>
+                    <span className="text-xs font-semibold text-slate-400" title="Define qué direcciones pueden tomar las palabras">Dificultad</span>
                     <div className="flex bg-slate-900 rounded p-0.5">
                         {Object.values(Difficulty).map((d) => (
-                        <button
-                            key={d}
-                            onClick={() => { setDifficulty(d); setIsSmartGrid(true); }}
-                            className={`px-2 py-1 text-[10px] rounded transition-colors ${
-                            difficulty === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'
-                            }`}
-                        >
-                            {d}
-                        </button>
+                        <Tooltip key={d} text={`Nivel ${d}: Define la complejidad y direcciones de las palabras.`} position="top">
+                            <button
+                                onClick={() => { setDifficulty(d); setIsSmartGrid(true); }}
+                                className={`px-2 py-1 text-[10px] rounded transition-colors ${
+                                difficulty === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'
+                                }`}
+                            >
+                                {d}
+                            </button>
+                        </Tooltip>
                         ))}
                     </div>
                  </div>
@@ -273,81 +394,103 @@ export default function App() {
                  <div className="flex justify-between items-center">
                      <div className="flex items-center gap-2">
                          <span className="text-xs font-semibold text-slate-400">Grilla</span>
-                         <label className="flex items-center gap-1 cursor-pointer">
-                            <input type="checkbox" checked={isSmartGrid} onChange={(e) => setIsSmartGrid(e.target.checked)} className="accent-indigo-500 rounded sm"/>
-                            <span className="text-[10px] text-indigo-300">Auto-Size</span>
-                         </label>
+                         <Tooltip text="Si está activo, el sistema calcula el tamaño perfecto para las palabras.">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" checked={isSmartGrid} onChange={(e) => setIsSmartGrid(e.target.checked)} className="accent-indigo-500 rounded sm"/>
+                                <span className="text-[10px] text-indigo-300">Auto-Size</span>
+                            </label>
+                         </Tooltip>
                      </div>
-                     <input 
-                        type="number" 
-                        value={gridSize}
-                        disabled={isSmartGrid}
-                        onChange={(e) => { setGridSize(Number(e.target.value)); setIsSmartGrid(false); }}
-                        className={`w-12 bg-slate-900 border border-slate-600 rounded text-center text-xs py-1 ${isSmartGrid ? 'opacity-50' : ''}`}
-                     />
+                     <Tooltip text="Tamaño manual de la grilla (filas x columnas). Desactiva Auto-Size para editar.">
+                        <input 
+                            type="number" 
+                            value={gridSize}
+                            disabled={isSmartGrid}
+                            onChange={(e) => { setGridSize(Number(e.target.value)); setIsSmartGrid(false); }}
+                            className={`w-12 bg-slate-900 border border-slate-600 rounded text-center text-xs py-1 ${isSmartGrid ? 'opacity-50' : ''}`}
+                        />
+                     </Tooltip>
                  </div>
               </div>
 
               {/* Headers & Footer */}
               <div className="space-y-2">
                  <label className="text-xs font-semibold text-slate-500 uppercase">Encabezados y Pie</label>
-                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 outline-none placeholder-slate-500" placeholder="Título Principal" />
+                 <Tooltip text="El título grande que aparecerá arriba del puzzle.">
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 outline-none placeholder-slate-500" placeholder="Título Principal" />
+                 </Tooltip>
                  <div className="flex gap-2">
-                    <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Izq..." />
-                    <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Der..." />
+                    <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Izq..." title="Texto superior izquierdo (ej. Nombre)"/>
+                    <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Der..." title="Texto superior derecho (ej. Fecha)"/>
                  </div>
                  <div className="flex gap-2 pt-1">
-                    <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)} className="w-2/3 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Texto Pie de Página" />
-                    <input type="text" value={pageNumber} onChange={(e) => setPageNumber(e.target.value)} className="w-1/3 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500 text-center" placeholder="# Pag" />
+                    <Tooltip text="Texto de marca o copyright al pie de la página." className="flex-grow">
+                        <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Texto Pie de Página" />
+                    </Tooltip>
+                    <Tooltip text="Número de página (esquina inf. derecha)." className="w-16">
+                        <input type="text" value={pageNumber} onChange={(e) => setPageNumber(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500 text-center" placeholder="# Pag" />
+                    </Tooltip>
                  </div>
               </div>
 
               {/* Seed */}
               <div className="flex items-center gap-2 bg-slate-800 p-2 rounded border border-slate-700">
                   <Hash className="w-4 h-4 text-purple-400" />
-                  <input 
-                    type="text" 
-                    value={seedInput} 
-                    onChange={(e) => setSeedInput(e.target.value.toUpperCase())} 
-                    placeholder={currentSeed || "SEED"} 
-                    className="flex-1 bg-transparent text-xs font-mono tracking-wider outline-none text-white uppercase placeholder-slate-600"
-                  />
-                  <button onClick={() => { setSeedInput(''); handleGeneratePuzzle(); }} className="hover:bg-slate-700 p-1 rounded"><Dices className="w-4 h-4 text-slate-400"/></button>
+                  <Tooltip text="Código único de este diseño. Úsalo para recuperar exactamente este mismo puzzle más tarde." className="flex-1">
+                    <input 
+                        type="text" 
+                        value={seedInput} 
+                        onChange={(e) => setSeedInput(e.target.value.toUpperCase())} 
+                        placeholder={currentSeed || "SEED"} 
+                        className="w-full bg-transparent text-xs font-mono tracking-wider outline-none text-white uppercase placeholder-slate-600"
+                    />
+                  </Tooltip>
+                  <Tooltip text="Generar una semilla aleatoria nueva.">
+                    <button onClick={() => { setSeedInput(''); handleGeneratePuzzle(); }} className="hover:bg-slate-700 p-1 rounded"><Dices className="w-4 h-4 text-slate-400"/></button>
+                  </Tooltip>
               </div>
 
           </div>
 
           {/* Action Buttons */}
           <div className="pt-4 grid grid-cols-2 gap-3">
-             <button
-              onClick={() => handleGeneratePuzzle()}
-              className="col-span-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
-            >
-              <RefreshCw className="w-5 h-5" /> Regenerar
-            </button>
+             <Tooltip text="Reorganiza las mismas palabras en posiciones diferentes." className="col-span-2">
+                <button
+                onClick={() => handleGeneratePuzzle()}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                <RefreshCw className="w-5 h-5" /> Regenerar
+                </button>
+             </Tooltip>
             
-            <button
-              onClick={handleSaveToLibrary}
-              className="bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg border border-slate-600 flex items-center justify-center gap-2 text-sm"
-            >
-              <Save className="w-4 h-4" /> Guardar
-            </button>
-            <button
-              onClick={() => {
-                  setLibraryPuzzles(getLibrary());
-                  setShowLibraryModal(true);
-              }}
-              className="bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg border border-slate-600 flex items-center justify-center gap-2 text-sm"
-            >
-              <FolderOpen className="w-4 h-4" /> Librería
-            </button>
+            <Tooltip text="Guarda este diseño en la memoria de este navegador.">
+                <button
+                onClick={handleSaveToLibrary}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg border border-slate-600 flex items-center justify-center gap-2 text-sm"
+                >
+                <Save className="w-4 h-4" /> Guardar
+                </button>
+            </Tooltip>
+            <Tooltip text="Abre la lista de puzzles guardados anteriormente.">
+                <button
+                onClick={() => {
+                    setLibraryPuzzles(getLibrary());
+                    setShowLibraryModal(true);
+                }}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg border border-slate-600 flex items-center justify-center gap-2 text-sm"
+                >
+                <FolderOpen className="w-4 h-4" /> Librería
+                </button>
+            </Tooltip>
 
-             <button
-              onClick={() => window.print()}
-              className="col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-2"
-            >
-              <Printer className="w-5 h-5" /> Imprimir / PDF
-            </button>
+             <Tooltip text="Prepara la hoja para imprimir o guardar como PDF." className="col-span-2">
+                <button
+                onClick={() => window.print()}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-2"
+                >
+                <Printer className="w-5 h-5" /> Imprimir / PDF
+                </button>
+             </Tooltip>
           </div>
 
         </div>
@@ -358,12 +501,17 @@ export default function App() {
         <div className="shadow-2xl print:shadow-none transition-all duration-300 origin-top scale-[0.85] md:scale-90 xl:scale-100">
            
            <div className="no-print mb-4 flex justify-between items-center">
-              <div className="text-gray-500 text-xs flex items-center gap-1 font-medium bg-white px-3 py-1 rounded-full shadow-sm">
-                 <CheckCircle2 className="w-3 h-3 text-green-500"/> A4 / Letter Ready
-              </div>
-              <button onClick={() => setShowSolution(!showSolution)} className={`text-xs px-3 py-1 rounded-full border transition-all ${showSolution ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200'}`}>
-                {showSolution ? 'Solución Visible' : 'Mostrar Solución'}
-              </button>
+              <Tooltip text="Esta vista simula una hoja de papel estándar. Lo que ves es lo que se imprimirá." position="bottom">
+                <div className="text-gray-500 text-xs flex items-center gap-1 font-medium bg-white px-3 py-1 rounded-full shadow-sm cursor-help">
+                    <CheckCircle2 className="w-3 h-3 text-green-500"/> A4 / Letter Ready
+                </div>
+              </Tooltip>
+              
+              <Tooltip text="Resalta las palabras encontradas. Útil para crear la hoja de respuestas (imprimir una con solución y otra sin ella)." position="right">
+                <button onClick={() => setShowSolution(!showSolution)} className={`text-xs px-3 py-1 rounded-full border transition-all ${showSolution ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-gray-500 border-gray-200'}`}>
+                    {showSolution ? 'Solución Visible' : 'Mostrar Solución'}
+                </button>
+              </Tooltip>
            </div>
            
            <PuzzleSheet 
@@ -371,7 +519,8 @@ export default function App() {
              config={{
                title, headerLeft, headerRight, footerText, pageNumber, 
                difficulty, gridSize, words: wordList, showSolution, 
-               styleMode, themeData, seed: currentSeed
+               styleMode, themeData, seed: currentSeed,
+               maskShape, hiddenMessage, fontType
              }}
            />
         </div>
@@ -417,13 +566,19 @@ export default function App() {
                             </div>
                             <div className="md:col-span-2">
                                 <label className="block text-xs text-slate-400 mb-1">API Key</label>
-                                <input 
-                                    type="password" 
-                                    value={settings.logicAI.apiKey}
-                                    onChange={(e) => setSettings({...settings, logicAI: {...settings.logicAI, apiKey: e.target.value}})}
-                                    placeholder="Pegar API Key aquí..."
-                                    className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-indigo-300"
-                                />
+                                {settings.logicAI.provider === 'gemini' ? (
+                                    <div className="w-full bg-slate-800/50 border border-slate-700 rounded px-3 py-2 text-sm text-slate-500 italic">
+                                        Gestionada automáticamente por el sistema (env)
+                                    </div>
+                                ) : (
+                                    <input 
+                                        type="password" 
+                                        value={settings.logicAI.apiKey}
+                                        onChange={(e) => setSettings({...settings, logicAI: {...settings.logicAI, apiKey: e.target.value}})}
+                                        placeholder="Pegar API Key aquí..."
+                                        className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-indigo-300"
+                                    />
+                                )}
                             </div>
                             {settings.logicAI.provider === 'openai_compatible' && (
                                 <div className="md:col-span-2">
@@ -470,12 +625,18 @@ export default function App() {
                             </div>
                             <div className="md:col-span-2">
                                 <label className="block text-xs text-slate-400 mb-1">API Key</label>
-                                <input 
-                                    type="password" 
-                                    value={settings.designAI.apiKey}
-                                    onChange={(e) => setSettings({...settings, designAI: {...settings.designAI, apiKey: e.target.value}})}
-                                    className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-pink-300"
-                                />
+                                {settings.designAI.provider === 'gemini' ? (
+                                    <div className="w-full bg-slate-800/50 border border-slate-700 rounded px-3 py-2 text-sm text-slate-500 italic">
+                                        Gestionada automáticamente por el sistema (env)
+                                    </div>
+                                ) : (
+                                    <input 
+                                        type="password" 
+                                        value={settings.designAI.apiKey}
+                                        onChange={(e) => setSettings({...settings, designAI: {...settings.designAI, apiKey: e.target.value}})}
+                                        className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-pink-300"
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

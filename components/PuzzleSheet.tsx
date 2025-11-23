@@ -1,10 +1,20 @@
 import React from 'react';
-import { GeneratedPuzzle, PuzzleConfig } from '../types';
+import { GeneratedPuzzle, PuzzleConfig, FontType } from '../types';
 
 interface PuzzleSheetProps {
   puzzle: GeneratedPuzzle | null;
   config: PuzzleConfig;
 }
+
+const getFontFamily = (fontType: FontType, isColor: boolean) => {
+    switch (fontType) {
+        case 'MODERN': return 'Roboto Mono, monospace'; // Or Inter/San-serif
+        case 'FUN': return '"Architects Daughter", cursive';
+        case 'SCHOOL': return 'sans-serif'; // Simple, clean
+        case 'CLASSIC': 
+        default: return '"Courier Prime", monospace';
+    }
+};
 
 const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   if (!puzzle) return null;
@@ -12,11 +22,13 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const { grid, placedWords } = puzzle;
   const { 
     title, headerLeft, headerRight, footerText, pageNumber,
-    gridSize, words, showSolution, styleMode, themeData 
+    gridSize, words, showSolution, styleMode, themeData,
+    fontType 
   } = config;
 
   // Define styles based on mode
   const isColor = styleMode === 'color' && themeData;
+  const fontFamily = getFontFamily(fontType, isColor);
   
   const containerStyle = isColor ? { backgroundColor: themeData.backgroundColor } : { backgroundColor: 'white' };
   
@@ -33,18 +45,26 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     width: '100%',
     maxWidth: '6.5in',
     aspectRatio: '1/1',
-    backgroundColor: isColor ? themeData.secondaryColor : 'white',
+    // We remove background here if using a shape mask to allow transparency between cells
+    // But usually a contiguous background looks better. 
+    // If shape is not square, we might want transparent container background.
+    backgroundColor: config.maskShape === 'SQUARE' 
+        ? (isColor ? themeData.secondaryColor : 'white') 
+        : 'transparent',
     borderColor: isColor ? themeData.primaryColor : 'black',
   };
 
-  const cellStyle = (isWord: boolean) => ({
+  const cellStyle = (isWord: boolean, isValid: boolean) => ({
     color: isColor ? themeData.textColor : 'black',
     // In solution mode, highlight found words
     backgroundColor: showSolution && isWord 
         ? (isColor ? themeData.primaryColor : '#d1d5db') 
-        : 'transparent',
+        : (isValid && config.maskShape === 'SQUARE' ? 'transparent' : (isValid && isColor ? themeData.secondaryColor : (isValid ? 'white' : 'transparent'))),
     // In solution mode, ensure text is readable against dark highlight
-    ...(showSolution && isWord && isColor ? { color: 'white' } : {})
+    ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
+    fontFamily: fontFamily,
+    opacity: isValid ? 1 : 0, // Hide invalid cells
+    borderRadius: config.maskShape !== 'SQUARE' ? '4px' : '0' // Rounded cells for shapes looks nicer
   });
 
   return (
@@ -67,7 +87,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
 
       {/* Header */}
       <div className="w-full border-b-2 mb-6 pb-2" style={headerStyle}>
-        <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-4" style={{ fontFamily: isColor ? 'Inter' : 'Courier Prime' }}>
+        <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-4" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
             {title || "Sopa de Letras"}
         </h1>
         <div className="flex justify-between mt-2 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
@@ -79,7 +99,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       {/* Grid Container */}
       <div className="flex-grow flex items-center justify-center w-full mb-6 relative">
         <div 
-          className="grid gap-0 border-2 transition-colors duration-300 rounded-sm overflow-hidden"
+          className={`grid gap-0 transition-colors duration-300 ${config.maskShape === 'SQUARE' ? 'border-2 rounded-sm' : ''}`}
           style={gridContainerStyle}
         >
           {grid.map((row, y) => (
@@ -91,16 +111,16 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                   key={`${x}-${y}`}
                   className={`
                     flex items-center justify-center 
-                    font-mono-puzzle font-bold
+                    font-bold
                     ${showSolution && !cell.isWord ? 'opacity-30' : ''}
                   `}
                   style={{
                       fontSize: gridSize > 18 ? '0.8rem' : gridSize > 14 ? '1rem' : '1.25rem',
                       lineHeight: 1,
-                      ...cellStyle(isSolutionCell)
+                      ...cellStyle(isSolutionCell, cell.isValid)
                   }}
                 >
-                  {cell.letter}
+                  {cell.isValid ? cell.letter : ''}
                 </div>
               );
             })
@@ -115,7 +135,8 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
             style={{ 
                 color: isColor ? 'white' : 'black',
                 backgroundColor: isColor ? themeData.primaryColor : 'transparent',
-                borderColor: 'black' 
+                borderColor: 'black',
+                fontFamily: fontType === 'FUN' ? fontFamily : 'inherit'
             }}
         >
             Palabras a encontrar:
@@ -124,7 +145,8 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
           className="grid gap-x-4 gap-y-2 text-sm font-medium w-full"
           style={{
             gridTemplateColumns: `repeat(${words.length > 20 ? 4 : 3}, 1fr)`,
-            color: isColor ? themeData.textColor : 'black'
+            color: isColor ? themeData.textColor : 'black',
+            fontFamily: fontType === 'FUN' ? fontFamily : 'inherit'
           }}
         >
             {words.sort().map((word, idx) => {
