@@ -4,12 +4,11 @@ import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from '
 import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
 import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, HelpCircle, Info, Heart, Circle, Square, MessageSquare, Gem, Star } from 'lucide-react';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, HelpCircle, Info, Heart, Circle, Square, MessageSquare, Gem, Star, Move } from 'lucide-react';
 
 const INITIAL_WORDS = ['REACT', 'TYPESCRIPT', 'TAILWIND', 'GEMINI', 'DEEPSEEK', 'GROQ', 'API', 'DATABASE'];
 
 // --- Componente Tooltip Reutilizable ---
-// Fix: Define props interface and use React.FC to correctly handle children and key props in TypeScript
 interface TooltipProps {
     text: string;
     children: React.ReactNode;
@@ -284,16 +283,84 @@ export default function App() {
           {/* Config Panels */}
           <div className="space-y-4">
 
-               {/* EXPERT FEATURES */}
+               {/* EXPERT FEATURES - Grilla Programable */}
+               <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 space-y-3 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 p-1 opacity-10"><Move className="w-12 h-12 text-white" /></div>
+                 <div className="flex items-center gap-2 border-b border-slate-700 pb-2 mb-2">
+                    <Grid3X3 className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Grilla Programable</span>
+                 </div>
+                 
+                 <div className="space-y-3">
+                    {/* Auto vs Manual Toggle */}
+                     <div className="flex items-center justify-between">
+                         <span className="text-[11px] text-slate-400 font-medium">Modo de Tamaño</span>
+                         <label className="flex items-center gap-2 cursor-pointer bg-slate-900 px-2 py-1 rounded-md border border-slate-700">
+                             <input 
+                                type="checkbox" 
+                                checked={isSmartGrid} 
+                                onChange={(e) => setIsSmartGrid(e.target.checked)} 
+                                className="w-3 h-3 accent-indigo-500"
+                             />
+                             <span className="text-[10px] font-bold text-indigo-300">
+                                {isSmartGrid ? "AUTOMÁTICO (IA)" : "MANUAL"}
+                             </span>
+                         </label>
+                     </div>
+
+                     {/* Grid Size Control */}
+                     <div className={`transition-all duration-300 ${isSmartGrid ? 'opacity-50 pointer-events-none grayscale' : 'opacity-100'}`}>
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Dimensiones</span>
+                            <span className="text-xs font-mono bg-indigo-900/50 text-indigo-300 px-2 rounded">
+                                {gridSize} x {gridSize}
+                            </span>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                            <span className="text-[9px] text-slate-600">10</span>
+                            <input 
+                                type="range" 
+                                min="10" 
+                                max="30" 
+                                value={gridSize} 
+                                onChange={(e) => { setGridSize(Number(e.target.value)); setIsSmartGrid(false); }}
+                                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                            <span className="text-[9px] text-slate-600">30</span>
+                        </div>
+                     </div>
+                     
+                     {/* Difficulty Buttons */}
+                     <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Direcciones (Dificultad)</span>
+                        <div className="flex bg-slate-900 rounded p-0.5">
+                            {Object.values(Difficulty).map((d) => (
+                            <Tooltip key={d} text={`Nivel ${d}: Define la complejidad y direcciones de las palabras.`} position="top">
+                                <button
+                                    onClick={() => { setDifficulty(d); }}
+                                    className={`px-2 py-1 text-[10px] w-full rounded transition-colors ${
+                                    difficulty === d ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-white'
+                                    }`}
+                                >
+                                    {d}
+                                </button>
+                            </Tooltip>
+                            ))}
+                        </div>
+                     </div>
+                 </div>
+               </div>
+
+               {/* Creative Features */}
                <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 space-y-3">
                  <div className="flex items-center gap-2 border-b border-slate-700 pb-2 mb-2">
                     <Sparkles className="w-4 h-4 text-yellow-400" />
-                    <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Edición Creativa</span>
+                    <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">Estilo</span>
                  </div>
                  
                  {/* Shape Selection */}
                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase text-slate-500 font-bold">Forma</label>
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Forma del Puzzle</label>
                     <div className="flex gap-2">
                         {[
                             { id: 'SQUARE', icon: Square, label: 'Cuadrado' },
@@ -305,7 +372,7 @@ export default function App() {
                             <Tooltip key={s.id} text={`Forma: ${s.label}`}>
                                 <button
                                     onClick={() => { setMaskShape(s.id as ShapeType); setIsSmartGrid(true); }}
-                                    className={`p-1.5 rounded-md transition-all ${maskShape === s.id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-500 hover:text-white'}`}
+                                    className={`p-1.5 rounded-md transition-all ${maskShape === s.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'bg-slate-900 text-slate-500 hover:text-white'}`}
                                 >
                                     <s.icon className="w-4 h-4" />
                                 </button>
@@ -328,28 +395,12 @@ export default function App() {
                         <option value="FUN">Divertida (A mano)</option>
                     </select>
                  </div>
-
-                 {/* Hidden Message */}
-                 <div className="space-y-1">
-                    <label className="text-[10px] uppercase text-slate-500 font-bold flex items-center gap-1">
-                        <MessageSquare className="w-3 h-3"/> Mensaje Oculto
-                    </label>
-                    <Tooltip text="Frase secreta que aparecerá en los espacios vacíos (leyendo de izq a der)." position="top">
-                        <input 
-                            type="text" 
-                            value={hiddenMessage}
-                            onChange={(e) => setHiddenMessage(e.target.value)}
-                            placeholder="Ej. FELIZ CUMPLEAÑOS"
-                            className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-indigo-300 placeholder-slate-600"
-                        />
-                    </Tooltip>
-                 </div>
               </div>
               
               {/* Appearance */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                     <label className="text-xs font-semibold text-slate-500 uppercase">Apariencia</label>
+                     <label className="text-xs font-semibold text-slate-500 uppercase">Modo de Color</label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     <Tooltip text="Genera una versión limpia en blanco y negro, ideal para imprimir y ahorrar tinta.">
@@ -371,51 +422,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Difficulty & Grid */}
-              <div className="bg-slate-800 p-3 rounded-lg border border-slate-700 space-y-3">
-                 <div className="flex justify-between items-center">
-                    <span className="text-xs font-semibold text-slate-400" title="Define qué direcciones pueden tomar las palabras">Dificultad</span>
-                    <div className="flex bg-slate-900 rounded p-0.5">
-                        {Object.values(Difficulty).map((d) => (
-                        <Tooltip key={d} text={`Nivel ${d}: Define la complejidad y direcciones de las palabras.`} position="top">
-                            <button
-                                onClick={() => { setDifficulty(d); setIsSmartGrid(true); }}
-                                className={`px-2 py-1 text-[10px] rounded transition-colors ${
-                                difficulty === d ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'
-                                }`}
-                            >
-                                {d}
-                            </button>
-                        </Tooltip>
-                        ))}
-                    </div>
-                 </div>
-                 
-                 <div className="flex justify-between items-center">
-                     <div className="flex items-center gap-2">
-                         <span className="text-xs font-semibold text-slate-400">Grilla</span>
-                         <Tooltip text="Si está activo, el sistema calcula el tamaño perfecto para las palabras.">
-                            <label className="flex items-center gap-1 cursor-pointer">
-                                <input type="checkbox" checked={isSmartGrid} onChange={(e) => setIsSmartGrid(e.target.checked)} className="accent-indigo-500 rounded sm"/>
-                                <span className="text-[10px] text-indigo-300">Auto-Size</span>
-                            </label>
-                         </Tooltip>
-                     </div>
-                     <Tooltip text="Tamaño manual de la grilla (filas x columnas). Desactiva Auto-Size para editar.">
-                        <input 
-                            type="number" 
-                            value={gridSize}
-                            disabled={isSmartGrid}
-                            onChange={(e) => { setGridSize(Number(e.target.value)); setIsSmartGrid(false); }}
-                            className={`w-12 bg-slate-900 border border-slate-600 rounded text-center text-xs py-1 ${isSmartGrid ? 'opacity-50' : ''}`}
-                        />
-                     </Tooltip>
-                 </div>
-              </div>
-
               {/* Headers & Footer */}
               <div className="space-y-2">
-                 <label className="text-xs font-semibold text-slate-500 uppercase">Encabezados y Pie</label>
+                 <label className="text-xs font-semibold text-slate-500 uppercase">Encabezados</label>
                  <Tooltip text="El título grande que aparecerá arriba del puzzle.">
                     <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm focus:border-indigo-500 outline-none placeholder-slate-500" placeholder="Título Principal" />
                  </Tooltip>
@@ -423,12 +432,20 @@ export default function App() {
                     <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Izq..." title="Texto superior izquierdo (ej. Nombre)"/>
                     <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-1/2 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Der..." title="Texto superior derecho (ej. Fecha)"/>
                  </div>
-                 <div className="flex gap-2 pt-1">
-                    <Tooltip text="Texto de marca o copyright al pie de la página." className="flex-grow">
-                        <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500" placeholder="Texto Pie de Página" />
-                    </Tooltip>
-                    <Tooltip text="Número de página (esquina inf. derecha)." className="w-16">
-                        <input type="text" value={pageNumber} onChange={(e) => setPageNumber(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs outline-none placeholder-slate-500 text-center" placeholder="# Pag" />
+                 
+                 {/* Hidden Message */}
+                 <div className="pt-2">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold flex items-center gap-1 mb-1">
+                        <MessageSquare className="w-3 h-3"/> Mensaje Oculto
+                    </label>
+                    <Tooltip text="Frase secreta que aparecerá en los espacios vacíos (leyendo de izq a der)." position="top">
+                        <input 
+                            type="text" 
+                            value={hiddenMessage}
+                            onChange={(e) => setHiddenMessage(e.target.value)}
+                            placeholder="Ej. FELIZ CUMPLEAÑOS"
+                            className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-indigo-300 placeholder-slate-600"
+                        />
                     </Tooltip>
                  </div>
               </div>
