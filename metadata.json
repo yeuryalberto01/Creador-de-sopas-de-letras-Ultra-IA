@@ -1,0 +1,5 @@
+{
+  "name": "Generador Profesional de Sopa de Letras",
+  "description": "Crea sopas de letras listas para imprimir en formato 8.5x11 con ayuda de IA.",
+  "requestFramePermissions": []
+}
