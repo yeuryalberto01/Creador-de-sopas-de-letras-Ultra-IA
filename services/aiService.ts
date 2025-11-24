@@ -1,87 +1,104 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AISettings, PuzzleTheme } from "../types";
+
+const BACKEND_URL = 'http://localhost:3001';
 
 // --- Generic Helpers ---
 
 const cleanJson = (text: string) => {
-  // Remove markdown code blocks if present
-  let clean = text.replace(/```json/g, '').replace(/```/g, '');
-  return JSON.parse(clean);
+    // Remove markdown code blocks if present
+    let clean = text.replace(/```json/g, '').replace(/```/g, '');
+    return JSON.parse(clean);
 };
 
 // --- API Client Implementations ---
 
-// 1. Google Gemini Client
+// 1. Google Gemini Client (via backend)
 const callGemini = async (settings: AISettings, prompt: string, schemaType?: any): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const config: any = {
-        temperature: 0.7,
-    };
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/gemini`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: settings.modelName || 'gemini-2.5-flash',
+                prompt,
+                schema: schemaType
+            })
+        });
 
-    if (schemaType) {
-        config.responseMimeType = "application/json";
-        config.responseSchema = schemaType;
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error en Gemini API');
+        }
+
+        const data = await response.json();
+        return data.text || "{}";
+    } catch (error) {
+        console.error('Gemini Backend Error:', error);
+        throw error;
     }
-
-    const response = await ai.models.generateContent({
-        model: settings.modelName || 'gemini-2.5-flash',
-        contents: prompt,
-        config: config
-    });
-
-    return response.text || "{}";
 };
 
-// 2. OpenAI Compatible Client (DeepSeek, Groq, Local)
+// 2. OpenAI Compatible Client (DeepSeek, Groq, Local) via backend
 const callOpenAICompatible = async (settings: AISettings, prompt: string, jsonMode: boolean): Promise<string> => {
-    const baseUrl = settings.baseUrl || "https://api.openai.com/v1";
-    
-    const body: any = {
-        model: settings.modelName,
-        messages: [
-            { role: "system", content: "You are a helpful assistant that outputs JSON." },
-            { role: "user", content: prompt }
-        ],
-        temperature: 0.7
-    };
+    try {
+        // Determinar el proveedor
+        let provider = 'openai';
 
-    if (jsonMode) {
-        body.response_format = { type: "json_object" };
+        // Si el proveedor es explícito, usarlo
+        if (['deepseek', 'groq', 'openai'].includes(settings.provider)) {
+            provider = settings.provider;
+        }
+        // Lógica legacy para detección automática si es 'openai_compatible'
+        else {
+            if (settings.baseUrl?.includes('deepseek')) provider = 'deepseek';
+            else if (settings.baseUrl?.includes('groq')) provider = 'groq';
+            else if (settings.modelName?.includes('deepseek')) provider = 'deepseek';
+            else if (settings.modelName?.includes('groq')) provider = 'groq';
+        }
+
+        const response = await fetch(`${BACKEND_URL}/api/openai-compatible`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                provider,
+                model: settings.modelName,
+                baseUrl: settings.baseUrl,
+                apiKey: settings.apiKey, // Enviar key si existe (override)
+                messages: [
+                    { role: "system", content: "You are a helpful assistant that outputs JSON." },
+                    { role: "user", content: prompt }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error en API');
+        }
+
+        const data = await response.json();
+        return data.choices[0].message.content;
+    } catch (error) {
+        console.error('OpenAI-Compatible Backend Error:', error);
+        throw error;
     }
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${settings.apiKey}`
-        },
-        body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-        const err = await response.text();
-        throw new Error(`API Error: ${err}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
 };
 
 // --- Main Service Functions ---
 
 const routeRequest = async (settings: AISettings, prompt: string, schema?: any): Promise<any> => {
-    // Note: For Gemini we use process.env.API_KEY, but for OpenAI compatible we might need the one from settings.
-    if (settings.provider !== 'gemini' && !settings.apiKey) throw new Error("API Key faltante en configuración");
-    
     let textResponse = "";
     if (settings.provider === 'gemini') {
         textResponse = await callGemini(settings, prompt, schema);
     } else {
-        // DeepSeek/Groq usually implies JSON mode if we ask for it
+        // Maneja openai_compatible, deepseek, groq, openai
         textResponse = await callOpenAICompatible(settings, prompt, true);
     }
-    
+
     try {
         return typeof textResponse === 'string' ? cleanJson(textResponse) : textResponse;
     } catch (e) {
@@ -108,21 +125,21 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
 
     // Gemini Schema definition
     const geminiSchema = {
-        type: Type.OBJECT,
+        type: 'OBJECT',
         properties: {
-            words: { type: Type.ARRAY, items: { type: Type.STRING } }
+            words: { type: 'ARRAY', items: { type: 'STRING' } }
         }
     };
 
     try {
         const data = await routeRequest(settings, prompt, geminiSchema);
-        
+
         let words = data.words || [];
         // Double clean
-        words = words.map((w: string) => 
+        words = words.map((w: string) =>
             w.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-ZÑ]/g, "")
         ).filter((w: string) => w.length >= 3);
-        
+
         return words;
     } catch (error) {
         console.error("Word Generation Error:", error);
@@ -150,12 +167,12 @@ export const generateThemeAI = async (settings: AISettings, topic: string): Prom
     `;
 
     const geminiSchema = {
-        type: Type.OBJECT,
+        type: 'OBJECT',
         properties: {
-            primaryColor: { type: Type.STRING },
-            secondaryColor: { type: Type.STRING },
-            textColor: { type: Type.STRING },
-            backgroundColor: { type: Type.STRING }
+            primaryColor: { type: 'STRING' },
+            secondaryColor: { type: 'STRING' },
+            textColor: { type: 'STRING' },
+            backgroundColor: { type: 'STRING' }
         }
     };
 
