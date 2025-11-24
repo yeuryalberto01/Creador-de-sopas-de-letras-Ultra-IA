@@ -4,7 +4,7 @@ export enum Difficulty {
   HARD = 'Difícil'
 }
 
-export type ShapeType = 'SQUARE' | 'CIRCLE' | 'HEART' | 'DIAMOND' | 'STAR' | 'HEXAGON' | 'TRIANGLE' | 'CROSS' | 'RHOMBUS' | 'OVAL';
+export type ShapeType = 'SQUARE' | 'CIRCLE' | 'HEART' | 'DIAMOND' | 'STAR';
 export type FontType = 'CLASSIC' | 'MODERN' | 'FUN' | 'SCHOOL';
 
 export interface GridCell {
@@ -43,8 +43,8 @@ export interface PuzzleConfig {
   gridSize: number;
   words: string[];
   showSolution: boolean;
-  seed?: string;
-  styleMode: 'bw' | 'color';
+  seed?: string; 
+  styleMode: 'bw' | 'color'; 
   themeData?: PuzzleTheme;
   // New Features
   maskShape: ShapeType;
@@ -62,7 +62,7 @@ export interface GeneratedPuzzle {
 
 // --- New Types for AI & Storage ---
 
-export type AIProvider = 'gemini' | 'openai_compatible' | 'deepseek' | 'groq' | 'openai';
+export type AIProvider = 'gemini' | 'openai_compatible'; // DeepSeek, Groq, etc use OpenAI format
 
 export interface AISettings {
   provider: AIProvider;

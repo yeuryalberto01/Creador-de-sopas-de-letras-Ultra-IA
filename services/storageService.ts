@@ -7,12 +7,12 @@ const STORAGE_KEY_SETTINGS = "sopa_creator_settings";
 const DEFAULT_SETTINGS: AppSettings = {
     logicAI: {
         provider: 'gemini',
-        apiKey: '', // La key se maneja en el backend ahora
+        apiKey: process.env.API_KEY || '', // Fallback for demo, though env usually not avail in browser built
         modelName: 'gemini-2.5-flash'
     },
     designAI: {
         provider: 'gemini',
-        apiKey: '', // La key se maneja en el backend ahora
+        apiKey: process.env.API_KEY || '',
         modelName: 'gemini-2.5-flash'
     }
 };

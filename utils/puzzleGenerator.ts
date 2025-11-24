@@ -57,77 +57,48 @@ const LETTERS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
  * Coordinates are normalized -1 to 1 for calculation.
  */
 const isInsideShape = (x: number, y: number, size: number, shape: ShapeType): boolean => {
-  if (shape === 'SQUARE') return true;
+    if (shape === 'SQUARE') return true;
 
-  // Normalize to -1 to 1 range
-  const nx = (x / (size - 1)) * 2 - 1;
-  const ny = (y / (size - 1)) * 2 - 1;
+    // Normalize to -1 to 1 range
+    const nx = (x / (size - 1)) * 2 - 1;
+    const ny = (y / (size - 1)) * 2 - 1;
 
-  if (shape === 'CIRCLE') {
-    return (nx * nx + ny * ny) <= 1.0;
-  }
+    if (shape === 'CIRCLE') {
+        return (nx * nx + ny * ny) <= 1.0;
+    }
 
-  if (shape === 'DIAMOND') {
-    return (Math.abs(nx) + Math.abs(ny)) <= 1.0;
-  }
+    if (shape === 'DIAMOND') {
+        return (Math.abs(nx) + Math.abs(ny)) <= 1.0;
+    }
 
-  if (shape === 'HEART') {
-    // Heart formula approximation
-    const fy = -ny * 1.2 + 0.3;
-    const fx = nx * 1.2;
-    const a = fx * fx + fy * fy - 1;
-    return (a * a * a - fx * fx * fy * fy * fy) <= 0;
-  }
+    if (shape === 'HEART') {
+        // Heart formula approximation
+        // (x^2 + y^2 - 1)^3 - x^2 * y^3 <= 0
+        // We flip Y because grid 0 is top
+        const fy = -ny * 1.2 + 0.3; // Adjust for grid aspect
+        const fx = nx * 1.2;
+        const a = fx * fx + fy * fy - 1;
+        return (a * a * a - fx * fx * fy * fy * fy) <= 0;
+    }
 
-  if (shape === 'STAR') {
-    // 5-point star using polar coordinates
-    const r = Math.sqrt(nx * nx + ny * ny);
-    const theta = Math.atan2(ny, nx);
-    return r < (0.4 + 0.3 * Math.cos(5 * theta + Math.PI / 2));
-  }
+    if (shape === 'STAR') {
+        // Simple 5-point star check using polar coordinates or polygon
+        // Using a simple distance metric from star arms is easier for grid
+        // This is a rough approximation
+        const r = Math.sqrt(nx*nx + ny*ny);
+        const theta = Math.atan2(ny, nx);
+        // Star boundary in polar: r(theta) = R / (cos(mod(theta, 2pi/5) - pi/5) / cos(pi/5))? No too complex
+        // Let's use two overlapping triangles logic or just a distance modulation
+        // r < 0.5 + 0.3 * cos(5 * theta)
+        return r < (0.4 + 0.3 * Math.cos(5 * theta + Math.PI/2)); // rotated
+    }
 
-  // --- NEW SHAPES ---
-
-  if (shape === 'HEXAGON') {
-    // Regular flat-top hexagon
-    const abs_nx = Math.abs(nx);
-    const abs_ny = Math.abs(ny);
-    return abs_ny <= 0.866 && (abs_nx + 0.866 * abs_ny) <= 0.95;
-  }
-
-  if (shape === 'TRIANGLE') {
-    // Equilateral triangle pointing up
-    const topEdge = ny >= -1.0;
-    const leftEdge = (ny - 0.5) <= -1.732 * (nx + 0.866);
-    const rightEdge = (ny - 0.5) <= 1.732 * (nx - 0.866);
-    return topEdge && leftEdge && rightEdge;
-  }
-
-  if (shape === 'CROSS') {
-    // Plus/Cross shape
-    const thickness = 0.4;
-    const horizontal = Math.abs(ny) <= thickness;
-    const vertical = Math.abs(nx) <= thickness;
-    return horizontal || vertical;
-  }
-
-  if (shape === 'RHOMBUS') {
-    // Rhombus with different aspect ratio than diamond
-    return (Math.abs(nx) + Math.abs(ny * 0.8)) <= 1.0;
-  }
-
-  if (shape === 'OVAL') {
-    // Ellipse wider horizontally
-    const a = 1.0;
-    const b = 0.7;
-    return ((nx * nx) / (a * a) + (ny * ny) / (b * b)) <= 1.0;
-  }
-
-  return true;
+    return true;
 };
 
 /**
  * Calculates a "Smart" grid size based on the words provided.
+ * It ensures the longest word fits and maintains a good density ratio.
  */
 export const calculateSmartGridSize = (words: string[], difficulty: Difficulty): number => {
   if (words.length === 0) return 15;
@@ -135,17 +106,17 @@ export const calculateSmartGridSize = (words: string[], difficulty: Difficulty):
   const longestWord = Math.max(...words.map(w => w.length));
   const totalChars = words.reduce((sum, w) => sum + w.length, 0);
 
-  let areaMultiplier = 3.0;
-  if (difficulty === Difficulty.EASY) areaMultiplier = 4.0;
+  let areaMultiplier = 3.0; // Default (Medium)
+  if (difficulty === Difficulty.EASY) areaMultiplier = 4.0; 
   if (difficulty === Difficulty.HARD) areaMultiplier = 2.0;
 
   const minArea = totalChars * areaMultiplier;
   const minDimensionByArea = Math.ceil(Math.sqrt(minArea));
-  const padding = 2;
+  const padding = 2; 
   const minDimensionByLength = longestWord + (difficulty === Difficulty.EASY ? 0 : padding);
 
   let idealSize = Math.max(minDimensionByLength, minDimensionByArea);
-
+  
   // Hard constraints
   idealSize = Math.max(12, Math.min(idealSize, 25));
 
@@ -153,27 +124,27 @@ export const calculateSmartGridSize = (words: string[], difficulty: Difficulty):
 };
 
 export const generateThemeFromTopic = (topic: string): PuzzleTheme => {
-  if (!topic) {
+    if (!topic) {
+        return {
+            primaryColor: '#4f46e5',
+            secondaryColor: '#e0e7ff', 
+            textColor: '#000000',
+            backgroundColor: '#ffffff'
+        };
+    }
+    let hash = 0;
+    for (let i = 0; i < topic.length; i++) {
+        hash = topic.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash % 360);
+    const primary = `hsl(${hue}, 70%, 40%)`;
+    const secondary = `hsl(${hue}, 70%, 95%)`;
     return {
-      primaryColor: '#4f46e5',
-      secondaryColor: '#e0e7ff',
-      textColor: '#000000',
-      backgroundColor: '#ffffff'
+        primaryColor: primary,
+        secondaryColor: secondary,
+        textColor: '#0f172a', 
+        backgroundColor: '#ffffff'
     };
-  }
-  let hash = 0;
-  for (let i = 0; i < topic.length; i++) {
-    hash = topic.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash % 360);
-  const primary = `hsl(${hue}, 70%, 40%)`;
-  const secondary = `hsl(${hue}, 70%, 95%)`;
-  return {
-    primaryColor: primary,
-    secondaryColor: secondary,
-    textColor: '#0f172a',
-    backgroundColor: '#ffffff'
-  };
 };
 
 export const generatePuzzle = (
@@ -184,7 +155,7 @@ export const generatePuzzle = (
   shape: ShapeType = 'SQUARE',
   hiddenMessage?: string
 ): GeneratedPuzzle => {
-
+  
   const seed = seedInput || Math.random().toString(36).substring(2, 8).toUpperCase();
   const rng = new SeededRNG(seed);
 
@@ -230,11 +201,11 @@ export const generatePuzzle = (
         const x = startX + dir[0] * i;
         const y = startY + dir[1] * i;
         const cell = grid[y][x];
-
-        // Mask Check
+        
+        // Mask Check: Every cell of the word must be inside the shape
         if (!cell.isValid) {
-          fits = false;
-          break;
+            fits = false; 
+            break;
         }
 
         // Collision Check
@@ -267,20 +238,22 @@ export const generatePuzzle = (
   }
 
   // Fill Empty Cells (Hidden Message Logic)
-  const cleanMessage = hiddenMessage
-    ? hiddenMessage.toUpperCase().replace(/[^A-ZÑ]/g, '')
+  const cleanMessage = hiddenMessage 
+    ? hiddenMessage.toUpperCase().replace(/[^A-ZÑ]/g, '') 
     : '';
-
+  
   let messageIndex = 0;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       if (grid[y][x].isValid && grid[y][x].letter === '') {
         if (cleanMessage && messageIndex < cleanMessage.length) {
-          grid[y][x].letter = cleanMessage[messageIndex];
-          messageIndex++;
+            // Use next letter from hidden message
+            grid[y][x].letter = cleanMessage[messageIndex];
+            messageIndex++;
         } else {
-          grid[y][x].letter = LETTERS[rng.nextInfo(LETTERS.length)];
+            // Random filler
+            grid[y][x].letter = LETTERS[rng.nextInfo(LETTERS.length)];
         }
       }
     }

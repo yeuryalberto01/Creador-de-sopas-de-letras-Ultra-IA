@@ -4,7 +4,6 @@
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["vite/client", "node"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -17,13 +16,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": [
-    "./App.tsx",
-    "./index.tsx",
-    "./components/**/*",
-    "./services/**/*",
-    "./utils/**/*",
-    "./types.ts"
-  ],
+  "include": ["."],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -6,7 +6,7 @@ interface PuzzleSheetProps {
   config: PuzzleConfig;
 }
 
-const getFontFamily = (fontType: FontType) => {
+const getFontFamily = (fontType: FontType, isColor: boolean) => {
     switch (fontType) {
         case 'MODERN': return 'Roboto Mono, monospace'; // Or Inter/San-serif
         case 'FUN': return '"Architects Daughter", cursive';
@@ -34,20 +34,14 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   } = config;
 
   // Define styles based on mode
-  const isColor = styleMode === 'color' && !!themeData;
-  const theme = themeData ?? {
-    primaryColor: '#000000',
-    secondaryColor: '#ffffff',
-    textColor: '#000000',
-    backgroundColor: '#ffffff'
-  };
-  const fontFamily = getFontFamily(fontType);
+  const isColor = styleMode === 'color' && themeData;
+  const fontFamily = getFontFamily(fontType, isColor);
   
-  const containerStyle = isColor ? { backgroundColor: theme.backgroundColor } : { backgroundColor: 'white' };
+  const containerStyle = isColor ? { backgroundColor: themeData.backgroundColor } : { backgroundColor: 'white' };
   
   const headerStyle = isColor ? { 
-    color: theme.primaryColor,
-    borderBottomColor: theme.primaryColor 
+    color: themeData.primaryColor,
+    borderBottomColor: themeData.primaryColor 
   } : { 
     color: 'black',
     borderBottomColor: 'black' 
@@ -62,17 +56,17 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     // But usually a contiguous background looks better. 
     // If shape is not square, we might want transparent container background.
     backgroundColor: config.maskShape === 'SQUARE' 
-        ? (isColor ? theme.secondaryColor : 'white') 
+        ? (isColor ? themeData.secondaryColor : 'white') 
         : 'transparent',
-    borderColor: isColor ? theme.primaryColor : 'black',
+    borderColor: isColor ? themeData.primaryColor : 'black',
   };
 
   const cellStyle = (isWord: boolean, isValid: boolean) => ({
-    color: isColor ? theme.textColor : 'black',
+    color: isColor ? themeData.textColor : 'black',
     // In solution mode, highlight found words
     backgroundColor: showSolution && isWord 
-        ? (isColor ? theme.primaryColor : '#d1d5db') 
-        : (isValid && config.maskShape === 'SQUARE' ? 'transparent' : (isValid && isColor ? theme.secondaryColor : (isValid ? 'white' : 'transparent'))),
+        ? (isColor ? themeData.primaryColor : '#d1d5db') 
+        : (isValid && config.maskShape === 'SQUARE' ? 'transparent' : (isValid && isColor ? themeData.secondaryColor : (isValid ? 'white' : 'transparent'))),
     // In solution mode, ensure text is readable against dark highlight
     ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
     fontFamily: fontFamily,
@@ -94,7 +88,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       {isColor && (
           <div 
             className="absolute top-0 left-0 w-full h-4 opacity-50" 
-            style={{ backgroundColor: theme.primaryColor }}
+            style={{ backgroundColor: themeData.primaryColor }}
           />
       )}
 
@@ -103,7 +97,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
         <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-4" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
             {title || "Sopa de Letras"}
         </h1>
-        <div className="flex justify-between mt-2 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? theme.textColor : 'black' }}>
+        <div className="flex justify-between mt-2 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
           <span className="min-w-[150px]">{headerLeft}</span>
           <span className="min-w-[150px] text-right">{headerRight}</span>
         </div>
@@ -147,7 +141,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
             className="text-xl font-bold mb-3 border-b inline-block px-2 py-1 rounded-t-md" 
             style={{ 
                 color: isColor ? 'white' : 'black',
-                backgroundColor: isColor ? theme.primaryColor : 'transparent',
+                backgroundColor: isColor ? themeData.primaryColor : 'transparent',
                 borderColor: 'black',
                 fontFamily: fontType === 'FUN' ? fontFamily : 'inherit'
             }}
@@ -158,7 +152,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
           className="grid gap-x-4 gap-y-2 text-sm font-medium w-full"
           style={{
             gridTemplateColumns: `repeat(${words.length > 20 ? 4 : 3}, 1fr)`,
-            color: isColor ? theme.textColor : 'black',
+            color: isColor ? themeData.textColor : 'black',
             fontFamily: fontType === 'FUN' ? fontFamily : 'inherit'
           }}
         >
@@ -169,7 +163,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                         <span 
                             className="w-3 h-3 border mr-2 inline-block shadow-sm"
                             style={{
-                                borderColor: isColor ? theme.primaryColor : 'black',
+                                borderColor: isColor ? themeData.primaryColor : 'black',
                                 backgroundColor: isColor ? 'white' : 'transparent',
                                 boxShadow: isColor ? 'none' : '1px 1px 0 0 rgba(0,0,0,1)'
                             }}
