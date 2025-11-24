@@ -35,7 +35,8 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
 
   // Define styles based on mode
   const isColor = styleMode === 'color' && themeData;
-  const fontFamily = getFontFamily(fontType, isColor);
+  // Fix: Cast isColor to boolean because it might contain the PuzzleTheme object
+  const fontFamily = getFontFamily(fontType, !!isColor);
   
   const containerStyle = isColor ? { backgroundColor: themeData.backgroundColor } : { backgroundColor: 'white' };
   
@@ -47,21 +48,21 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     borderBottomColor: 'black' 
   };
 
-  const gridContainerStyle = {
+  const gridContainerStyle: React.CSSProperties = {
+    display: 'grid',
     gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+    gridTemplateRows: `repeat(${gridSize}, 1fr)`,
     width: '100%',
-    maxWidth: '6.5in',
-    aspectRatio: '1/1',
-    // We remove background here if using a shape mask to allow transparency between cells
-    // But usually a contiguous background looks better. 
-    // If shape is not square, we might want transparent container background.
+    maxWidth: '6.5in', // Max width constraint for paper
+    aspectRatio: '1/1', // FORCE SQUARE
+    margin: '0 auto',
     backgroundColor: config.maskShape === 'SQUARE' 
         ? (isColor ? themeData.secondaryColor : 'white') 
         : 'transparent',
     borderColor: isColor ? themeData.primaryColor : 'black',
   };
 
-  const cellStyle = (isWord: boolean, isValid: boolean) => ({
+  const cellStyle = (isWord: boolean, isValid: boolean): React.CSSProperties => ({
     color: isColor ? themeData.textColor : 'black',
     // In solution mode, highlight found words
     backgroundColor: showSolution && isWord 
@@ -71,13 +72,13 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
     fontFamily: fontFamily,
     opacity: isValid ? 1 : 0, // Hide invalid cells
-    borderRadius: config.maskShape !== 'SQUARE' ? '4px' : '0' // Rounded cells for shapes looks nicer
+    borderRadius: config.maskShape !== 'SQUARE' ? '20%' : '0' // Rounded cells for shapes looks nicer
   });
 
   return (
     <div 
       id="puzzle-sheet"
-      className="mx-auto relative flex flex-col items-center p-12 box-border transition-colors duration-300"
+      className="mx-auto relative flex flex-col items-center p-12 box-border transition-colors duration-300 shadow-sm print:shadow-none print:m-0 print:border-none print:w-[8.5in] print:h-[11in]"
       style={{ 
         width: '8.5in', 
         height: '11in',
@@ -106,7 +107,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       {/* Grid Container */}
       <div className="flex-grow flex items-center justify-center w-full mb-6 relative">
         <div 
-          className={`grid gap-0 transition-colors duration-300 ${config.maskShape === 'SQUARE' ? 'border-2 rounded-sm' : ''}`}
+          className={`transition-colors duration-300 ${config.maskShape === 'SQUARE' ? 'border-2 rounded-sm' : ''}`}
           style={gridContainerStyle}
         >
           {grid.map((row, y) => (
@@ -122,8 +123,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                     ${showSolution && !cell.isWord ? 'opacity-30' : ''}
                   `}
                   style={{
-                      fontSize: gridSize > 18 ? '0.8rem' : gridSize > 14 ? '1rem' : '1.25rem',
-                      lineHeight: 1,
+                      fontSize: `clamp(10px, ${60 / gridSize}vmin, 24px)`, // Dynamic font sizing
                       ...cellStyle(isSolutionCell, cell.isValid)
                   }}
                 >
@@ -161,14 +161,14 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                 return (
                     <div key={idx} className={`flex items-center ${!isFound ? 'line-through text-red-500' : ''}`}>
                         <span 
-                            className="w-3 h-3 border mr-2 inline-block shadow-sm"
+                            className="w-3 h-3 border mr-2 inline-block shadow-sm flex-shrink-0"
                             style={{
                                 borderColor: isColor ? themeData.primaryColor : 'black',
                                 backgroundColor: isColor ? 'white' : 'transparent',
                                 boxShadow: isColor ? 'none' : '1px 1px 0 0 rgba(0,0,0,1)'
                             }}
                         ></span>
-                        {word}
+                        <span className="truncate">{word}</span>
                     </div>
                 );
             })}
@@ -180,7 +180,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       <div className="w-full flex justify-between items-end text-gray-500 mt-2 border-t pt-2 pb-1 relative">
         <div className="flex flex-col">
             <span className="text-[10px] font-medium uppercase tracking-wide">
-                {footerText !== undefined ? footerText : "Generado con AI SopaCreator"}
+                {footerText !== undefined ? footerText : "Generado con SopaCreator AI"}
             </span>
             <span className="font-mono text-[9px] opacity-60">ID: {puzzle.seed}</span>
         </div>
