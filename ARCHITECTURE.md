@@ -1,115 +1,135 @@
 
-# 🏗️ Arquitectura del Proyecto: SopaCreator AI
+# 🏗️ Arquitectura del Proyecto: SopaCreator AI (v4.5 - Art Studio Edition)
 
-Este documento sirve como la **Fuente de la Verdad** para cualquier Inteligencia Artificial o desarrollador que trabaje en este proyecto. Describe la estructura, la lógica de negocio, los flujos de datos y las restricciones críticas para evitar romper la funcionalidad existente.
+Este documento es la **Fuente de la Verdad** técnica del proyecto. Describe la estructura, lógica de negocio, flujos de datos y restricciones críticas. Úsalo para analizar impactos antes de realizar cambios en el código.
 
 ---
 
-## 1. 🎯 Objetivo del Proyecto
-Una aplicación web profesional (React + TypeScript) para generar, personalizar, imprimir y exportar Sopa de Letras (Word Search Puzzles). 
-**Prioridad Máxima:** La calidad de la exportación a PDF/Impresión (formato Letter 8.5x11 estricto) y la integración robusta con APIs de IA (Gemini, DeepSeek, Grok).
+## 1. 🎯 Visión y Stack Tecnológico
+**Objetivo:** Aplicación web profesional para generar, personalizar, imprimir y exportar Sopa de Letras con capacidades de diseño artístico generativo.
+**Prioridad:** Calidad de impresión (Letter 8.5x11), UX fluida y robustez en la integración de IA.
+
+**Tecnologías:**
+*   **Frontend:** React 19 + TypeScript + Vite (implícito).
+*   **Estilos:** Tailwind CSS (con clases personalizadas `print:`).
+*   **IA:** Google GenAI SDK (Gemini 2.5) + REST (OpenAI Compatible).
+*   **Exportación:** `html2pdf.js` (vía CDN).
+*   **Persistencia:** `localStorage` (Browser Native).
 
 ---
 
 ## 2. 📂 Estructura de Archivos y Responsabilidades
 
-### Núcleo (Core)
-- **`index.html`**: 
-  - **CRÍTICO:** Contiene la librería `html2pdf.bundle.min.js` (CDN) y los estilos CSS `@media print`.
-  - **Regla:** No eliminar los estilos de `@page` ni el script de `html2pdf`.
-- **`App.tsx`**: 
-  - **Función:** Es el "Cerebro" (Controller). Maneja todo el estado global, modales y orquesta la comunicación entre servicios.
-  - **UI:** Contiene la Sidebar (controles), el Main (previsualización) y los Modales.
-  - **Art Studio:** Ahora incluye un modal completo para generar, gestionar y aplicar imágenes de fondo generadas por IA.
-  - **Estado de Grilla:** Maneja independientemente `gridSize` (Ancho/Columnas) y `gridRows` (Alto/Filas).
-- **`types.ts`**: 
-  - **Función:** Define los contratos de datos (`GeneratedPuzzle`, `PuzzleConfig`, `AISettings`, `ArtTemplate`).
-  - **Regla:** Si cambias una interfaz aquí, debes actualizar `puzzleGenerator.ts` y `storageService.ts`.
+### A. Núcleo (Core)
+- **`index.html`**:
+  - **Función:** Punto de entrada. Carga librerías críticas (`html2pdf`, Tailwind CDN) y define estilos base `@media print`.
+  - **Restricción:** No eliminar el script de `html2pdf` ni los estilos de `@page`.
+- **`App.tsx` (Controller)**:
+  - **Responsabilidad:** Orquestador principal. Maneja el estado global (`config`, `puzzleData`), controla la UI (Sidebar, Main, Modales) e integra los servicios.
+  - **Nuevas Funciones:** 
+    - Control de **Grilla Rectangular** (GridSize vs GridRows).
+    - Gestión del **Art Studio** (Prompts, Generación, Galería).
+    - Sistema de Diagnóstico de APIs.
+- **`types.ts` (Contracts)**:
+  - **Responsabilidad:** Define las estructuras de datos inmutables.
+  - **Modelos Clave:** `PuzzleConfig` (incluye ahora `backgroundId`, `backgroundImage`), `ArtTemplate`, `GeneratedPuzzle`.
 
-### Lógica (Utils & Services)
-- **`utils/puzzleGenerator.ts`**: 
-  - **Función:** Algoritmo matemático puro.
-  - **Componentes:** RNG (Generador de números aleatorios con semilla), lógica de colocación de palabras, detección de colisiones y máscaras de formas (`ShapeType`).
-  - **Soporte Rectangular:** El generador ahora soporta ancho y alto independientes. Las formas (Círculos, Corazones) se escalan al cuadro delimitador (bounding box) de la grilla rectangular.
-- **`services/aiService.ts`**: 
-  - **Función:** Capa de comunicación con LLMs.
-  - **Soporte:** Google Gemini (SDK nativo) y OpenAI Compatible (DeepSeek, Grok, Local) via REST.
-  - **Generación de Imágenes:** Utiliza `gemini-2.5-flash-image` para crear bordes en blanco y negro o fondos artísticos.
-  - **Regla:** Siempre limpia y valida el JSON devuelto por la IA.
-- **`services/storageService.ts`**: 
-  - **Función:** Persistencia en `localStorage` (Configuración, Biblioteca de Puzzles, y Biblioteca de Arte).
+### B. Lógica y Algoritmos (Utils)
+- **`utils/puzzleGenerator.ts`**:
+  - **Responsabilidad:** Motor matemático.
+  - **Lógica Rectangular:** Acepta `width` y `height` independientes. Si `height` es `undefined`, asume cuadrado (`width`).
+  - **Máscaras de Forma:** Las funciones `isInsideShape` normalizan las coordenadas (0 a 1) para aplicar formas (Corazón, Estrella) sin importar si la grilla es cuadrada o rectangular.
+  - **Algoritmo:** Backtracking aleatorio con semilla (Seeded RNG) para reproducibilidad garantizada.
 
-### Visualización (Components)
-- **`components/PuzzleSheet.tsx`**: 
-  - **Función:** El componente visual que se renderiza en pantalla Y se imprime.
-  - **CRÍTICO:** Utiliza medidas en pulgadas (`in`) y `aspect-ratio` para garantizar la fidelidad al imprimir.
-  - **Capas:** 
-    1. Fondo (Imagen IA Generada)
-    2. Decoración CSS (Si es modo color y sin imagen)
-    3. Grilla y Textos
-  - **Escalado:** Implementa lógica para reducir el tamaño de celda si la grilla excede 7.2" de ancho o 9.0" de alto, asegurando que siempre quepa en la hoja carta.
+### C. Servicios (Services)
+- **`services/aiService.ts`**:
+  - **Responsabilidad:** Gateway para LLMs y Modelos de Imagen.
+  - **Texto:** Genera palabras y temas (JSON) usando Gemini Flash o OpenAI.
+  - **Imágenes (Art Studio):** Usa `gemini-2.5-flash-image`.
+    - *Estrategia:* Prompt Engineering específico para "Coloring Book" (B/N) o "Watermark" (Color) para evitar conflictos visuales con el texto.
+- **`services/storageService.ts`**:
+  - **Responsabilidad:** Capa de persistencia local.
+  - **Keys:** 
+    - `sopa_creator_db` (Puzzles guardados).
+    - `sopa_creator_settings` (API Keys).
+    - `sopa_creator_art_library` (Plantillas de arte).
 
----
-
-## 3. ⚙️ Flujos Críticos (Cómo funciona todo)
-
-### A. Generación del Puzzle
-1. Usuario cambia configuración en Sidebar (`App.tsx`).
-2. Se llama a `handleGeneratePuzzle()`.
-3. `calculateSmartGridSize` decide el tamaño óptimo (para modo Auto).
-4. `generatePuzzle` (en utils) crea la matriz bidimensional (`GridCell[][]`) usando filas y columnas específicas.
-5. El estado `generatedPuzzle` se actualiza.
-6. `<PuzzleSheet />` recibe los nuevos datos y se re-renderiza.
-
-### B. Sistema de Exportación (PDF e Impresión) - ¡ZONA FRÁGIL!
-Este es el punto más delicado de la app.
-- **ID Objetivo:** `#puzzle-sheet` en `PuzzleSheet.tsx`.
-- **Impresión Nativa:** Se basa en `index.html` -> `@media print`. Las clases de Tailwind `print:hidden` en `App.tsx` ocultan la UI (sidebar, botones).
-- **PDF (html2pdf):**
-  - Usa `html2canvas` con `scale: 3` para alta resolución.
-  - Ignora los estilos de impresión del navegador y toma una "foto" del elemento DOM.
-  - **Regla:** El contenedor padre en `App.tsx` tiene transformaciones CSS (`scale-[0.65]`) para que quepa en pantalla. Al imprimir/exportar, estas transformaciones se anulan (`print:scale-100`, `print:transform-none`) para que salga a tamaño real.
-
-### C. Integración IA & Arte
-1. **Palabras:** `App.tsx` -> `aiService.generateWordListAI`. Retorna JSON.
-2. **Arte:** `Art Studio Modal` -> `aiService.generatePuzzleBackground`.
-   - Prompt Engineering específico para B/N (Line Art) vs Color (Watermark).
-   - Retorna Base64 de la imagen generada.
-   - Se guarda en `localStorage` como `ArtTemplate`.
+### D. Visualización (Components)
+- **`components/PuzzleSheet.tsx`**:
+  - **Responsabilidad:** Lienzo de renderizado final (WYSIWYG para impresión).
+  - **Estrategia de Capas (Layering Strategy) - CRÍTICO:**
+    1.  **Capa 0 (Fondo):** Imagen generada por IA. `absolute inset-0 z-0`. Opacidad variable según estilo.
+    2.  **Capa 1 (Contenedor):** `relative z-10`. Contiene todo el texto y la grilla.
+    3.  **Capa Grilla:** Si hay imagen de fondo, la grilla tiene un fondo semitransparente (`rgba(255,255,255,0.85)`) para garantizar legibilidad de letras.
+  - **Escalado Inteligente:** Calcula el tamaño de celda en pulgadas (`in`) basándose en el ancho (7.2") Y alto (9.0") máximos disponibles.
 
 ---
 
-## 4. 🎮 Guía de UI (Botones y Controles)
+## 3. ⚙️ Flujos Críticos de Datos
 
-### Sidebar (Panel Izquierdo)
-1. **Contenido:** Input para Tema (IA) y lista de palabras manual.
-2. **Grilla:** Switch Auto/Manual. Sliders para **Columnas** y **Filas** independientes.
-3. **Diseño y Arte:** 
-   - Botón "Arte y Decoración" (Abre Modal).
-   - Selector de Formas (Cuadrado, Corazón, etc.).
-   - Fuentes y Modo Color.
-4. **Textos:** Títulos y campos de metadatos.
-5. **Footer Actions:** Botones grandes de Generar, Guardar, PDF e Imprimir.
+### 1. Flujo de Generación de Puzzle (Rectangular)
+1.  **Input:** Usuario define `Columnas` (Ancho) y `Filas` (Alto) en `App.tsx`.
+2.  **Proceso:** `generatePuzzle(w, h, ...)` crea una matriz `GridCell[h][w]`.
+3.  **Validación:** El generador verifica límites `x < width` y `y < height`.
+4.  **Render:** `PuzzleSheet` itera sobre `grid` (filas) y `row` (columnas) para pintar.
 
-### Modal Art Studio
-- **Izquierda:** Prompt de entrada, Selector de Estilo (B/N vs Color), Botón Generar.
-- **Derecha:** Galería de plantillas guardadas con vista previa y botones Aplicar/Borrar.
+### 2. Flujo "Art Studio" (Generación de Fondos)
+1.  **Prompt:** Usuario describe escena (ej: "Bosque mágico").
+2.  **API Call:** `aiService` construye un prompt técnico:
+    - *B/N:* "Line art, coloring book style, empty center".
+    - *Color:* "Watercolor, pastel, low contrast, watermark".
+3.  **Respuesta:** Recibe Base64 de Gemini.
+4.  **Almacenamiento:** Se guarda en `localStorage` como `ArtTemplate`.
+5.  **Aplicación:** Se inyecta en `PuzzleConfig.backgroundImage`.
+6.  **Visualización:** `PuzzleSheet` detecta la imagen y cambia el fondo del papel de `white` a `transparent` para revelar la imagen debajo.
 
-### Modales
-- **Configuración (Engranaje):** Gestiona API Keys y realiza el "Diagnóstico del Sistema".
-- **Biblioteca (Carpeta):** Carga/Borra puzzles de `localStorage`.
-- **Diagnóstico (Pulso):** Ejecuta pruebas unitarias en vivo sobre las librerías y APIs.
-
----
-
-## 5. 🚫 Reglas de Oro para la IA (DO NOT BREAK)
-
-1. **NO ELIMINAR** las clases `print:hidden`, `print:block`, `print:w-full`, etc. Son vitales para que la hoja salga limpia en papel.
-2. **NO MODIFICAR** el tamaño fijo de `8.5in` x `11in` en `PuzzleSheet.tsx`.
-3. **MANTENER** el `<script>` de `html2pdf` en `index.html`. No intentar importarlo via NPM (causa problemas de compatibilidad con React 18/19 en algunos entornos de compilación rápida).
-4. **INTEGRIDAD DE DATOS:** Al modificar `generatePuzzle`, asegurar que siempre devuelva un objeto compatible con la interfaz `GeneratedPuzzle`.
-5. **MANEJO DE ERRORES:** Siempre envolver las llamadas a APIs de IA en `try/catch` y notificar al usuario en la UI, no solo en consola.
+### 3. Flujo de Exportación (PDF)
+1.  **Disparador:** Botón "PDF" en Sidebar.
+2.  **Librería:** `html2pdf.js`.
+3.  **Configuración:**
+    - `scale: 3`: Alta resolución (aprox 300 DPI).
+    - `format: 'letter'`: Coincide con las dimensiones CSS de `PuzzleSheet`.
+4.  **Truco:** `App.tsx` tiene `print:block`. Al exportar, se ignora el escalado CSS (`scale-X`) de la vista previa y se renderiza a tamaño real (8.5x11 in).
 
 ---
 
-*Este archivo debe ser consultado antes de realizar cambios estructurales o de refactorización.*
+## 4. 📝 Diccionario de Datos (localStorage)
+
+### `SavedPuzzleRecord`
+```typescript
+{
+  id: string;          // UUID
+  name: string;        // Título
+  createdAt: number;   // Timestamp
+  config: PuzzleConfig;// Configuración completa para recrearlo
+  puzzleData: GeneratedPuzzle; // La matriz resuelta (para carga instantánea)
+}
+```
+
+### `ArtTemplate`
+```typescript
+{
+  id: string;
+  name: string;        // Derivado del prompt
+  prompt: string;      // Prompt original
+  imageBase64: string; // Data URL completa
+  style: 'bw' | 'color';
+}
+```
+
+---
+
+## 5. 🚫 Restricciones y Reglas de Seguridad ("Do Not Break")
+
+1.  **Dimensiones de Papel:** NUNCA modificar `width: 8.5in` y `height: 11in` en `PuzzleSheet.tsx`. Romperá la impresión.
+2.  **Z-Index en Fondos:** La imagen de fondo **NO** debe tener `z-index` negativo si el contenedor padre tiene fondo blanco. La estrategia actual (`div` de imagen absoluto + `div` de contenido relativo z-10) es la única que funciona consistentemente con `html2pdf`.
+3.  **API Keys:** Nunca exponer las keys en el código cliente si se despliega públicamente. Usar `settings` locales o variables de entorno inyectadas.
+4.  **Retro-compatibilidad:** Al cargar un puzzle viejo desde `localStorage`, `gridHeight` puede ser `undefined`. Siempre usar fallback: `height = config.gridHeight || config.gridSize`.
+
+---
+
+## 6. 🛠️ Guía de Mantenimiento
+
+*   **Si los fondos no se ven:** Revisa `PuzzleSheet.tsx`. Asegúrate de que el contenedor principal tenga `backgroundColor: 'transparent'` cuando `backgroundImage` existe.
+*   **Si el PDF sale cortado:** Verifica los márgenes en `generatePuzzle` (padding) o ajusta `MAX_WIDTH_INCH` en `PuzzleSheet`.
+*   **Si la IA falla:** Usa el botón "Diagnóstico" en el modal de configuración para probar la conexión independientemente de la lógica del puzzle.

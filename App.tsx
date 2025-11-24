@@ -5,7 +5,7 @@ import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from '
 import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary, saveArtTemplate, getArtLibrary, deleteArtTemplate } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
 import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download } from 'lucide-react';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle } from 'lucide-react';
 
 // --- CONSTANTES DE DIFICULTAD ---
 const DIFFICULTY_PRESETS = {
@@ -41,7 +41,7 @@ const INITIAL_WORDS = ['REACT', 'TYPESCRIPT', 'TAILWIND', 'GEMINI', 'DEEPSEEK', 
 interface TooltipProps {
     text: string;
     children: React.ReactNode;
-    position?: 'top' | 'bottom' | 'right';
+    position?: 'top' | 'bottom' | 'right' | 'left';
     className?: string;
 }
 
@@ -55,12 +55,13 @@ const Tooltip: React.FC<TooltipProps> = ({
     <div className={`group relative flex items-center ${className}`}>
       {children}
       <div className={`
-        pointer-events-none absolute z-50 hidden group-hover:block 
-        w-48 bg-slate-900 text-white text-[10px] font-medium p-2 rounded-md shadow-xl border border-slate-700
-        text-center leading-tight
+        pointer-events-none absolute z-[70] hidden group-hover:block 
+        w-max max-w-[200px] bg-slate-900 text-white text-[10px] font-medium p-2 rounded-md shadow-xl border border-slate-700
+        text-center leading-tight whitespace-normal
         ${position === 'top' ? 'bottom-full mb-2 left-1/2 -translate-x-1/2' : ''}
         ${position === 'bottom' ? 'top-full mt-2 left-1/2 -translate-x-1/2' : ''}
         ${position === 'right' ? 'left-full ml-2 top-1/2 -translate-y-1/2' : ''}
+        ${position === 'left' ? 'right-full mr-2 top-1/2 -translate-y-1/2' : ''}
       `}>
         {text}
         <div className={`
@@ -68,6 +69,7 @@ const Tooltip: React.FC<TooltipProps> = ({
             ${position === 'top' ? 'top-full left-1/2 -translate-x-1/2 border-t-slate-900' : ''}
             ${position === 'bottom' ? 'bottom-full left-1/2 -translate-x-1/2 border-b-slate-900' : ''}
             ${position === 'right' ? 'right-full top-1/2 -translate-y-1/2 border-r-slate-900' : ''}
+            ${position === 'left' ? 'left-full top-1/2 -translate-y-1/2 border-l-slate-900' : ''}
         `}></div>
       </div>
     </div>
@@ -281,18 +283,19 @@ const ProviderSettingsForm = ({
                      <label className="block text-xs text-slate-400 mb-1 font-bold">Proveedor de IA</label>
                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                         {Object.values(PROVIDER_PRESETS).map((preset) => (
-                            <button
-                                key={preset.id}
-                                onClick={() => handlePresetChange(preset.id)}
-                                className={`text-xs p-2 rounded-lg border transition-all flex flex-col items-center justify-center gap-1 text-center h-16 ${
-                                    selectedPreset === preset.id 
-                                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]' 
-                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                                }`}
-                            >
-                                <Network className={`w-4 h-4 ${selectedPreset === preset.id ? 'text-indigo-400' : 'opacity-50'}`} />
-                                <span className="line-clamp-1 scale-90">{preset.name}</span>
-                            </button>
+                            <Tooltip key={preset.id} text={`Usar configuración predefinida para ${preset.name}`} position="top">
+                                <button
+                                    onClick={() => handlePresetChange(preset.id)}
+                                    className={`w-full text-xs p-2 rounded-lg border transition-all flex flex-col items-center justify-center gap-1 text-center h-16 ${
+                                        selectedPreset === preset.id 
+                                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]' 
+                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                                    }`}
+                                >
+                                    <Network className={`w-4 h-4 ${selectedPreset === preset.id ? 'text-indigo-400' : 'opacity-50'}`} />
+                                    <span className="line-clamp-1 scale-90">{preset.name}</span>
+                                </button>
+                            </Tooltip>
                         ))}
                      </div>
                 </div>
@@ -308,21 +311,23 @@ const ProviderSettingsForm = ({
                             placeholder={selectedPreset === 'gemini' ? "Usando variable de entorno (opcional sobreescribir)" : "sk-..."}
                             className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-indigo-300 focus:border-indigo-500 outline-none"
                         />
-                         <button 
-                            onClick={runTest}
-                            disabled={testStatus === 'loading'}
-                            className={`px-3 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${
-                                testStatus === 'success' ? 'bg-green-500/20 border-green-500 text-green-400' :
-                                testStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
-                                'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
-                            }`}
-                        >
-                            {testStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin"/> : 
-                             testStatus === 'success' ? <Check className="w-4 h-4"/> : 
-                             testStatus === 'error' ? <AlertTriangle className="w-4 h-4"/> : 
-                             <Network className="w-4 h-4"/>}
-                            {testStatus === 'loading' ? 'Probando...' : 'Probar'}
-                        </button>
+                         <Tooltip text="Verificar si la conexión con la IA funciona correctamente" position="left">
+                            <button 
+                                onClick={runTest}
+                                disabled={testStatus === 'loading'}
+                                className={`px-3 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${
+                                    testStatus === 'success' ? 'bg-green-500/20 border-green-500 text-green-400' :
+                                    testStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                                    'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
+                                }`}
+                            >
+                                {testStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin"/> : 
+                                testStatus === 'success' ? <Check className="w-4 h-4"/> : 
+                                testStatus === 'error' ? <AlertTriangle className="w-4 h-4"/> : 
+                                <Network className="w-4 h-4"/>}
+                                {testStatus === 'loading' ? 'Probando...' : 'Probar'}
+                            </button>
+                        </Tooltip>
                     </div>
                     {testMessage && (
                         <p className={`text-[10px] mt-1 ${testStatus === 'success' ? 'text-green-400' : 'text-red-400'}`}>
@@ -670,15 +675,15 @@ export default function App() {
                 </div>
                 SopaCreator
             </h1>
-            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.1</p>
+            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.5</p>
           </div>
           <div className="flex gap-2">
-             <Tooltip text="Biblioteca Guardada" position="bottom">
+             <Tooltip text="Abrir la biblioteca de puzzles guardados" position="bottom">
                 <button onClick={() => { setLibraryPuzzles(getLibrary()); setShowLibraryModal(true); }} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white">
                     <FolderOpen className="w-5 h-5" />
                 </button>
             </Tooltip>
-            <Tooltip text="Configuración API" position="bottom">
+            <Tooltip text="Configuración de APIs y Proveedores IA" position="bottom">
                 <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white relative">
                     <Settings2 className="w-5 h-5" />
                     {(!settings.logicAI.apiKey && settings.logicAI.provider !== 'gemini') && (
@@ -704,28 +709,29 @@ export default function App() {
                          const preset = DIFFICULTY_PRESETS[d];
                          const isSelected = difficulty === d;
                          return (
-                            <button
-                                key={d}
-                                onClick={() => handleDifficultyChange(d)}
-                                className={`text-left p-3 rounded-lg border transition-all relative overflow-hidden group ${
-                                isSelected 
-                                    ? `bg-slate-800 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]` 
-                                    : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800 hover:border-slate-500'
-                                }`}
-                            >
-                                <div className={`absolute top-0 left-0 w-1 h-full ${preset.color} transition-opacity ${isSelected ? 'opacity-100' : 'opacity-40 group-hover:opacity-80'}`} />
-                                <div className="ml-3">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{preset.label}</span>
-                                        {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                            <Tooltip key={d} text={`Seleccionar modo ${preset.label}: ${preset.description}`} position="right">
+                                <button
+                                    onClick={() => handleDifficultyChange(d)}
+                                    className={`w-full text-left p-3 rounded-lg border transition-all relative overflow-hidden group ${
+                                    isSelected 
+                                        ? `bg-slate-800 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]` 
+                                        : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800 hover:border-slate-500'
+                                    }`}
+                                >
+                                    <div className={`absolute top-0 left-0 w-1 h-full ${preset.color} transition-opacity ${isSelected ? 'opacity-100' : 'opacity-40 group-hover:opacity-80'}`} />
+                                    <div className="ml-3">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{preset.label}</span>
+                                            {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 leading-tight">{preset.description}</p>
+                                        <div className="mt-2 flex gap-2 text-[9px] font-mono text-slate-400">
+                                            <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Grilla ~{preset.defaultSize}x{preset.defaultSize}</span>
+                                            <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Palabras: {preset.recommendedWords}</span>
+                                        </div>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 leading-tight">{preset.description}</p>
-                                    <div className="mt-2 flex gap-2 text-[9px] font-mono text-slate-400">
-                                        <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Grilla ~{preset.defaultSize}x{preset.defaultSize}</span>
-                                        <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Palabras: {preset.recommendedWords}</span>
-                                    </div>
-                                </div>
-                            </button>
+                                </button>
+                            </Tooltip>
                          );
                      })}
                 </div>
@@ -742,23 +748,29 @@ export default function App() {
                 <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 hover:border-indigo-500/30 transition-colors">
                     <label className="text-[10px] uppercase text-slate-500 font-bold mb-2 block flex justify-between">
                         <span>Generar con IA</span>
-                        <BrainCircuit className="w-3 h-3 text-indigo-400" />
+                        <Tooltip text="El cerebro AI creará una lista de palabras basada en tu tema." position="left">
+                            <BrainCircuit className="w-3 h-3 text-indigo-400" />
+                        </Tooltip>
                     </label>
                     <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={topic}
-                            onChange={(e) => setTopic(e.target.value)}
-                            placeholder="Tema (ej. Países, Espacio)..."
-                            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-slate-600"
-                        />
-                        <button
-                            onClick={handleAiGenerate}
-                            disabled={isGeneratingAI || !topic}
-                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-indigo-900/20"
-                        >
-                            {isGeneratingAI ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                        </button>
+                        <Tooltip text="Escribe un tema (ej: 'Planetas', 'Animales') para que la IA genere palabras automáticamente" position="top" className="flex-1">
+                            <input
+                                type="text"
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                placeholder="Tema (ej. Países, Espacio)..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder-slate-600"
+                            />
+                        </Tooltip>
+                        <Tooltip text="Clic para generar lista de palabras con IA" position="top">
+                            <button
+                                onClick={handleAiGenerate}
+                                disabled={isGeneratingAI || !topic}
+                                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-indigo-900/20"
+                            >
+                                {isGeneratingAI ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                            </button>
+                        </Tooltip>
                     </div>
                 </div>
 
@@ -768,35 +780,41 @@ export default function App() {
                          <label className="text-[10px] uppercase text-slate-500 font-bold block">
                             Palabras ({wordList.length})
                         </label>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
-                            wordList.length > parseInt(DIFFICULTY_PRESETS[difficulty].recommendedWords.split('-')[1]) 
-                            ? 'bg-amber-900/50 text-amber-200' 
-                            : 'bg-slate-900 text-slate-400'
-                        }`}>
-                            Rec: {DIFFICULTY_PRESETS[difficulty].recommendedWords}
-                        </span>
+                        <Tooltip text={`Para dificultad ${difficulty}, se recomiendan ${DIFFICULTY_PRESETS[difficulty].recommendedWords} palabras.`} position="left">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded cursor-help ${
+                                wordList.length > parseInt(DIFFICULTY_PRESETS[difficulty].recommendedWords.split('-')[1]) 
+                                ? 'bg-amber-900/50 text-amber-200' 
+                                : 'bg-slate-900 text-slate-400'
+                            }`}>
+                                Rec: {DIFFICULTY_PRESETS[difficulty].recommendedWords}
+                            </span>
+                        </Tooltip>
                      </div>
                     <form onSubmit={handleAddWord} className="relative mb-3">
-                        <input
-                            type="text"
-                            value={manualWord}
-                            onChange={(e) => setManualWord(e.target.value)}
-                            placeholder="Agregar palabra manual..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:border-indigo-500 outline-none placeholder-slate-600"
-                        />
-                         <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-white transition-colors">
+                        <Tooltip text="Escribe una palabra y presiona Enter o el botón +" position="top" className="w-full">
+                            <input
+                                type="text"
+                                value={manualWord}
+                                onChange={(e) => setManualWord(e.target.value)}
+                                placeholder="Agregar palabra manual..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:border-indigo-500 outline-none placeholder-slate-600"
+                            />
+                        </Tooltip>
+                         <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-white transition-colors" title="Añadir palabra">
                             <span className="text-xl leading-none">+</span>
                         </button>
                     </form>
                     
                     <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
                         {wordList.map((word) => (
-                            <span key={word} className="inline-flex items-center gap-1.5 bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1 rounded-full border border-slate-600 group hover:border-slate-500 transition-colors">
-                                {word}
-                                <button onClick={() => handleRemoveWord(word)} className="text-slate-400 hover:text-red-400 rounded-full p-0.5 transition-colors">
-                                    <X className="w-3 h-3" />
-                                </button>
-                            </span>
+                            <Tooltip key={word} text={`Clic en la X para eliminar "${word}"`} position="top">
+                                <span className="inline-flex items-center gap-1.5 bg-slate-700 text-slate-200 text-[11px] px-2.5 py-1 rounded-full border border-slate-600 group hover:border-slate-500 transition-colors">
+                                    {word}
+                                    <button onClick={() => handleRemoveWord(word)} className="text-slate-400 hover:text-red-400 rounded-full p-0.5 transition-colors">
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            </Tooltip>
                         ))}
                     </div>
                 </div>
@@ -810,18 +828,22 @@ export default function App() {
                 </div>
 
                 <div className="bg-slate-800 p-1 rounded-lg flex mb-4">
-                    <button 
-                        onClick={() => setIsSmartGrid(true)}
-                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${isSmartGrid ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Auto (Según Nivel)
-                    </button>
-                    <button 
-                         onClick={() => setIsSmartGrid(false)}
-                         className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${!isSmartGrid ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        Manual
-                    </button>
+                    <Tooltip text="El tamaño se ajusta automáticamente según la dificultad y la cantidad de palabras" position="top" className="flex-1">
+                        <button 
+                            onClick={() => setIsSmartGrid(true)}
+                            className={`w-full py-1.5 text-xs font-medium rounded-md transition-all ${isSmartGrid ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                        >
+                            Auto (Recomendado)
+                        </button>
+                    </Tooltip>
+                    <Tooltip text="Define manualmente cuántas filas y columnas quieres" position="top" className="flex-1">
+                        <button 
+                            onClick={() => setIsSmartGrid(false)}
+                            className={`w-full py-1.5 text-xs font-medium rounded-md transition-all ${!isSmartGrid ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                        >
+                            Manual
+                        </button>
+                    </Tooltip>
                 </div>
 
                 {!isSmartGrid && (
@@ -832,28 +854,32 @@ export default function App() {
                                     <label className="text-[9px] uppercase text-slate-400 font-bold">Columnas</label>
                                     <span className="text-xs font-mono text-indigo-300 font-bold">{gridSize}</span>
                                 </div>
-                                <input 
-                                    type="range" 
-                                    min="8" 
-                                    max="30" 
-                                    value={gridSize} 
-                                    onChange={(e) => setGridSize(Number(e.target.value))}
-                                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                />
+                                <Tooltip text="Ajustar ancho de la grilla" position="top">
+                                    <input 
+                                        type="range" 
+                                        min="8" 
+                                        max="30" 
+                                        value={gridSize} 
+                                        onChange={(e) => setGridSize(Number(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                    />
+                                </Tooltip>
                              </div>
                              <div>
                                 <div className="flex justify-between items-end mb-1">
                                     <label className="text-[9px] uppercase text-slate-400 font-bold">Filas</label>
                                     <span className="text-xs font-mono text-indigo-300 font-bold">{gridRows}</span>
                                 </div>
-                                <input 
-                                    type="range" 
-                                    min="8" 
-                                    max="30" 
-                                    value={gridRows} 
-                                    onChange={(e) => setGridRows(Number(e.target.value))}
-                                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                />
+                                <Tooltip text="Ajustar alto de la grilla" position="top">
+                                    <input 
+                                        type="range" 
+                                        min="8" 
+                                        max="30" 
+                                        value={gridRows} 
+                                        onChange={(e) => setGridRows(Number(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                    />
+                                </Tooltip>
                              </div>
                         </div>
                     </div>
@@ -868,16 +894,18 @@ export default function App() {
                 </div>
                 
                 {/* Art Studio Button */}
-                <button
-                    onClick={() => { setArtLibrary(getArtLibrary()); setShowArtStudio(true); }}
-                    className="w-full bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white p-3 rounded-lg shadow-lg flex items-center justify-between group transition-all"
-                >
-                    <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-yellow-200" />
-                        <span className="font-bold text-sm">Arte y Decoración</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-1 transition-transform" />
-                </button>
+                <Tooltip text="Abre el estudio para generar fondos decorativos con Inteligencia Artificial" position="right">
+                    <button
+                        onClick={() => { setArtLibrary(getArtLibrary()); setShowArtStudio(true); }}
+                        className="w-full bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white p-3 rounded-lg shadow-lg flex items-center justify-between group transition-all"
+                    >
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-yellow-200" />
+                            <span className="font-bold text-sm">Arte y Decoración</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 opacity-50 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                </Tooltip>
                 
                 {/* Background Toggle */}
                 {backgroundImage && (
@@ -886,12 +914,14 @@ export default function App() {
                             <Image className="w-4 h-4 text-pink-400" />
                             <span className="text-xs text-slate-300">Fondo Activado</span>
                         </div>
-                        <button 
-                            onClick={() => setIsArtActive(!isArtActive)}
-                            className={`relative w-9 h-5 rounded-full transition-colors ${isArtActive ? 'bg-indigo-500' : 'bg-slate-600'}`}
-                        >
-                             <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform ${isArtActive ? 'translate-x-4' : ''}`} />
-                        </button>
+                        <Tooltip text="Activar o desactivar la visualización del fondo generado" position="left">
+                            <button 
+                                onClick={() => setIsArtActive(!isArtActive)}
+                                className={`relative w-9 h-5 rounded-full transition-colors ${isArtActive ? 'bg-indigo-500' : 'bg-slate-600'}`}
+                            >
+                                <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform ${isArtActive ? 'translate-x-4' : ''}`} />
+                            </button>
+                        </Tooltip>
                     </div>
                 )}
 
@@ -901,18 +931,19 @@ export default function App() {
                         <label className="text-[10px] uppercase text-slate-500 font-bold">Forma</label>
                         <div className="flex gap-1 bg-slate-800 p-1 rounded-lg">
                             {[
-                                { id: 'SQUARE', icon: Square },
-                                { id: 'CIRCLE', icon: Circle },
-                                { id: 'HEART', icon: Heart },
-                                { id: 'STAR', icon: Star }
+                                { id: 'SQUARE', icon: Square, label: "Cuadrado" },
+                                { id: 'CIRCLE', icon: Circle, label: "Círculo" },
+                                { id: 'HEART', icon: Heart, label: "Corazón" },
+                                { id: 'STAR', icon: Star, label: "Estrella" }
                             ].map((s) => (
-                                <button
-                                    key={s.id}
-                                    onClick={() => { setMaskShape(s.id as ShapeType); setIsSmartGrid(true); }}
-                                    className={`flex-1 p-1.5 flex justify-center rounded transition-all ${maskShape === s.id ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:text-white'}`}
-                                >
-                                    <s.icon className="w-4 h-4" />
-                                </button>
+                                <Tooltip key={s.id} text={`Aplicar forma de ${s.label}`} position="top" className="flex-1">
+                                    <button
+                                        onClick={() => { setMaskShape(s.id as ShapeType); setIsSmartGrid(true); }}
+                                        className={`w-full p-1.5 flex justify-center rounded transition-all ${maskShape === s.id ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:text-white'}`}
+                                    >
+                                        <s.icon className="w-4 h-4" />
+                                    </button>
+                                </Tooltip>
                             ))}
                         </div>
                      </div>
@@ -920,27 +951,31 @@ export default function App() {
                       {/* Font */}
                      <div className="space-y-1">
                         <label className="text-[10px] uppercase text-slate-500 font-bold">Fuente</label>
-                         <select 
-                            value={fontType} 
-                            onChange={(e) => setFontType(e.target.value as FontType)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none"
-                        >
-                            <option value="CLASSIC">Clásica</option>
-                            <option value="MODERN">Moderna</option>
-                            <option value="FUN">Divertida</option>
-                        </select>
+                        <Tooltip text="Cambia el estilo de letra del puzzle" position="left" className="w-full">
+                            <select 
+                                value={fontType} 
+                                onChange={(e) => setFontType(e.target.value as FontType)}
+                                className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none"
+                            >
+                                <option value="CLASSIC">Clásica (Máquina)</option>
+                                <option value="MODERN">Moderna (Sans)</option>
+                                <option value="FUN">Divertida (Mano)</option>
+                            </select>
+                        </Tooltip>
                      </div>
                 </div>
 
                 {/* Color Toggle */}
                 <div className="flex items-center justify-between bg-slate-800/50 p-2 rounded-lg border border-slate-700">
                     <span className="text-xs text-slate-300 ml-1">Modo Color (Letras)</span>
-                    <button 
-                        onClick={() => setStyleMode(prev => prev === 'bw' ? 'color' : 'bw')}
-                        className={`relative w-10 h-5 rounded-full transition-colors duration-300 ${styleMode === 'color' ? 'bg-gradient-to-r from-pink-500 to-indigo-500' : 'bg-slate-600'}`}
-                    >
-                        <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform duration-300 ${styleMode === 'color' ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
+                    <Tooltip text="Cambiar entre modo Blanco/Negro y Colores Temáticos" position="left">
+                        <button 
+                            onClick={() => setStyleMode(prev => prev === 'bw' ? 'color' : 'bw')}
+                            className={`relative w-10 h-5 rounded-full transition-colors duration-300 ${styleMode === 'color' ? 'bg-gradient-to-r from-pink-500 to-indigo-500' : 'bg-slate-600'}`}
+                        >
+                            <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform duration-300 ${styleMode === 'color' ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
             
@@ -953,17 +988,23 @@ export default function App() {
                 
                 <div className="space-y-1">
                     <label className="text-[10px] uppercase text-slate-500 font-bold">Título Principal</label>
-                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none" placeholder="Sopa de Letras" />
+                    <Tooltip text="El título grande que aparecerá arriba de la hoja" position="top" className="w-full">
+                        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none" placeholder="Sopa de Letras" />
+                    </Tooltip>
                 </div>
                 
                 <div className="flex gap-2">
                     <div className="w-1/2 space-y-1">
                         <label className="text-[10px] uppercase text-slate-500 font-bold">Subtítulo Izq</label>
-                        <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                        <Tooltip text="Texto para nombre o curso (izquierda)" position="top" className="w-full">
+                            <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                        </Tooltip>
                     </div>
                     <div className="w-1/2 space-y-1">
                         <label className="text-[10px] uppercase text-slate-500 font-bold">Subtítulo Der</label>
-                        <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                         <Tooltip text="Texto para fecha o calificación (derecha)" position="top" className="w-full">
+                            <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                        </Tooltip>
                     </div>
                 </div>
             </div>
@@ -972,33 +1013,41 @@ export default function App() {
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-slate-800 bg-slate-950 space-y-3">
-             <button
-                onClick={() => handleGeneratePuzzle()}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
-            >
-                <RefreshCw className="w-5 h-5" /> Generar Puzzle
-            </button>
+            <Tooltip text="Generar una nueva distribución de letras con la configuración actual" position="top" className="w-full">
+                <button
+                    onClick={() => handleGeneratePuzzle()}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                    <RefreshCw className="w-5 h-5" /> Generar Puzzle
+                </button>
+            </Tooltip>
             <div className="grid grid-cols-2 gap-2">
-                <button
-                    onClick={handleSaveToLibrary}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-lg border border-slate-700 flex items-center justify-center gap-2 text-xs font-medium"
-                >
-                    <Save className="w-3.5 h-3.5" /> Guardar
-                </button>
-                <button
-                    onClick={handleDownloadPDF}
-                    disabled={isExportingPDF}
-                    className="bg-sky-700 hover:bg-sky-600 text-white py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-medium"
-                >
-                    {isExportingPDF ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} 
-                    PDF
-                </button>
-                 <button
-                    onClick={() => window.print()}
-                    className="col-span-2 bg-emerald-700 hover:bg-emerald-600 text-emerald-100 py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-medium"
-                >
-                    <Printer className="w-3.5 h-3.5" /> Imprimir
-                </button>
+                <Tooltip text="Guardar este diseño en la biblioteca del navegador" position="top" className="w-full">
+                    <button
+                        onClick={handleSaveToLibrary}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-lg border border-slate-700 flex items-center justify-center gap-2 text-xs font-medium"
+                    >
+                        <Save className="w-3.5 h-3.5" /> Guardar
+                    </button>
+                </Tooltip>
+                <Tooltip text="Descargar el puzzle actual como archivo PDF de alta calidad" position="top" className="w-full">
+                    <button
+                        onClick={handleDownloadPDF}
+                        disabled={isExportingPDF}
+                        className="w-full bg-sky-700 hover:bg-sky-600 text-white py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-medium"
+                    >
+                        {isExportingPDF ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} 
+                        PDF
+                    </button>
+                </Tooltip>
+                <Tooltip text="Abrir el diálogo de impresión del navegador" position="top" className="w-full col-span-2">
+                    <button
+                        onClick={() => window.print()}
+                        className="w-full bg-emerald-700 hover:bg-emerald-600 text-emerald-100 py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-medium"
+                    >
+                        <Printer className="w-3.5 h-3.5" /> Imprimir
+                    </button>
+                </Tooltip>
             </div>
         </div>
       </aside>
@@ -1008,17 +1057,21 @@ export default function App() {
         
         {/* Toolbar Floating */}
         <div className="absolute top-6 flex gap-4 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 z-10 no-print print:hidden">
-            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 border-r pr-4">
-                 <Hash className="w-3 h-3" />
-                 <span className="font-mono">{currentSeed || "SEED"}</span>
-            </div>
-            <button 
-                onClick={() => setShowSolution(!showSolution)} 
-                className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${showSolution ? 'text-green-600' : 'text-gray-500 hover:text-gray-800'}`}
-            >
-                {showSolution ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
-                {showSolution ? 'Ocultar Solución' : 'Ver Solución'}
-            </button>
+            <Tooltip text="Identificador único (Semilla) de este puzzle. Útil para recrearlo exactamente igual." position="bottom">
+                <div className="flex items-center gap-2 text-xs font-medium text-gray-500 border-r pr-4 cursor-help">
+                    <Hash className="w-3 h-3" />
+                    <span className="font-mono">{currentSeed || "SEED"}</span>
+                </div>
+            </Tooltip>
+            <Tooltip text="Resaltar dónde están las palabras escondidas" position="bottom">
+                <button 
+                    onClick={() => setShowSolution(!showSolution)} 
+                    className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${showSolution ? 'text-green-600' : 'text-gray-500 hover:text-gray-800'}`}
+                >
+                    {showSolution ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                    {showSolution ? 'Ocultar Solución' : 'Ver Solución'}
+                </button>
+            </Tooltip>
         </div>
 
         {/* Paper Simulation */}
@@ -1069,31 +1122,37 @@ export default function App() {
                           <div>
                               <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Estilo</label>
                               <div className="grid grid-cols-2 gap-2">
-                                  <button
-                                    onClick={() => setBackgroundStyle('bw')}
-                                    className={`p-3 rounded-lg border text-sm font-medium flex flex-col items-center gap-1 transition-all ${backgroundStyle === 'bw' ? 'bg-slate-800 border-white text-white' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500'}`}
-                                  >
-                                      <div className="w-4 h-4 rounded-full border border-current"></div>
-                                      Blanco y Negro (Line Art)
-                                  </button>
-                                  <button
-                                    onClick={() => setBackgroundStyle('color')}
-                                    className={`p-3 rounded-lg border text-sm font-medium flex flex-col items-center gap-1 transition-all ${backgroundStyle === 'color' ? 'bg-gradient-to-br from-pink-900/50 to-indigo-900/50 border-pink-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500'}`}
-                                  >
-                                      <div className="w-4 h-4 rounded-full bg-gradient-to-r from-pink-500 to-indigo-500"></div>
-                                      Color (Marca de Agua)
-                                  </button>
+                                  <Tooltip text="Genera contornos para colorear" position="top" className="w-full">
+                                    <button
+                                        onClick={() => setBackgroundStyle('bw')}
+                                        className={`w-full p-3 rounded-lg border text-sm font-medium flex flex-col items-center gap-1 transition-all ${backgroundStyle === 'bw' ? 'bg-slate-800 border-white text-white' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500'}`}
+                                    >
+                                        <div className="w-4 h-4 rounded-full border border-current"></div>
+                                        Blanco y Negro (Line Art)
+                                    </button>
+                                  </Tooltip>
+                                  <Tooltip text="Genera fondos suaves estilo acuarela" position="top" className="w-full">
+                                    <button
+                                        onClick={() => setBackgroundStyle('color')}
+                                        className={`w-full p-3 rounded-lg border text-sm font-medium flex flex-col items-center gap-1 transition-all ${backgroundStyle === 'color' ? 'bg-gradient-to-br from-pink-900/50 to-indigo-900/50 border-pink-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500'}`}
+                                    >
+                                        <div className="w-4 h-4 rounded-full bg-gradient-to-r from-pink-500 to-indigo-500"></div>
+                                        Color (Marca de Agua)
+                                    </button>
+                                  </Tooltip>
                               </div>
                           </div>
 
-                          <button
-                            onClick={handleGenerateArt}
-                            disabled={isGeneratingArt || !artPrompt}
-                            className="w-full bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4"
-                          >
-                              {isGeneratingArt ? <Loader2 className="w-5 h-5 animate-spin"/> : <Wand2 className="w-5 h-5"/>}
-                              Generar Arte
-                          </button>
+                          <Tooltip text="Enviar petición a la IA para crear la imagen" position="top" className="w-full">
+                            <button
+                                onClick={handleGenerateArt}
+                                disabled={isGeneratingArt || !artPrompt}
+                                className="w-full bg-gradient-to-r from-pink-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4"
+                            >
+                                {isGeneratingArt ? <Loader2 className="w-5 h-5 animate-spin"/> : <Wand2 className="w-5 h-5"/>}
+                                Generar Arte
+                            </button>
+                          </Tooltip>
                           
                           {isArtActive && backgroundImage && (
                               <button
@@ -1129,15 +1188,18 @@ export default function App() {
                                       <p className="text-white text-xs font-bold truncate">{template.name}</p>
                                       <p className="text-slate-300 text-[10px] capitalize">{template.style}</p>
                                       <div className="flex gap-2 mt-2">
-                                          <button 
-                                            onClick={() => { handleLoadArt(template); setShowArtStudio(false); }}
-                                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1.5 rounded"
-                                          >
-                                              Aplicar
-                                          </button>
+                                          <Tooltip text="Usar este fondo" position="top" className="flex-1">
+                                            <button 
+                                                onClick={() => { handleLoadArt(template); setShowArtStudio(false); }}
+                                                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1.5 rounded"
+                                            >
+                                                Aplicar
+                                            </button>
+                                          </Tooltip>
                                           <button 
                                             onClick={() => { deleteArtTemplate(template.id); setArtLibrary(getArtLibrary()); }}
                                             className="bg-red-600 hover:bg-red-500 text-white p-1.5 rounded"
+                                            title="Eliminar plantilla"
                                           >
                                               <Trash2 className="w-4 h-4"/>
                                           </button>
@@ -1232,6 +1294,7 @@ export default function App() {
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); deletePuzzleFromLibrary(record.id); setLibraryPuzzles(getLibrary()); }}
                                     className="text-gray-300 hover:text-red-500 transition-colors"
+                                    title="Eliminar puzzle"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
