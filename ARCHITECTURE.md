@@ -1,5 +1,5 @@
 
-# 🏗️ Arquitectura del Proyecto: SopaCreator AI (v4.5 - Art Studio Edition)
+# 🏗️ Arquitectura del Proyecto: SopaCreator AI (v4.6 - Layout Engine Edition)
 
 Este documento es la **Fuente de la Verdad** técnica del proyecto. Describe la estructura, lógica de negocio, flujos de datos y restricciones críticas. Úsalo para analizar impactos antes de realizar cambios en el código.
 
@@ -27,109 +27,84 @@ Este documento es la **Fuente de la Verdad** técnica del proyecto. Describe la 
 - **`App.tsx` (Controller)**:
   - **Responsabilidad:** Orquestador principal. Maneja el estado global (`config`, `puzzleData`), controla la UI (Sidebar, Main, Modales) e integra los servicios.
   - **Nuevas Funciones:** 
+    - Control de **Márgenes Dinámicos** (Top, Bottom, Left, Right).
     - Control de **Grilla Rectangular** (GridSize vs GridRows).
     - Gestión del **Art Studio** (Prompts, Generación, Galería).
     - Sistema de Diagnóstico de APIs.
+    - Implementación extensiva de **Tooltips** para UX.
 - **`types.ts` (Contracts)**:
   - **Responsabilidad:** Define las estructuras de datos inmutables.
-  - **Modelos Clave:** `PuzzleConfig` (incluye ahora `backgroundId`, `backgroundImage`), `ArtTemplate`, `GeneratedPuzzle`.
+  - **Modelos Clave:** `PuzzleConfig` (incluye ahora `margins: PuzzleMargins`), `GeneratedPuzzle`.
 
 ### B. Lógica y Algoritmos (Utils)
 - **`utils/puzzleGenerator.ts`**:
   - **Responsabilidad:** Motor matemático.
-  - **Lógica Rectangular:** Acepta `width` y `height` independientes. Si `height` es `undefined`, asume cuadrado (`width`).
-  - **Máscaras de Forma:** Las funciones `isInsideShape` normalizan las coordenadas (0 a 1) para aplicar formas (Corazón, Estrella) sin importar si la grilla es cuadrada o rectangular.
-  - **Algoritmo:** Backtracking aleatorio con semilla (Seeded RNG) para reproducibilidad garantizada.
+  - **Lógica Rectangular:** Acepta `width` y `height` independientes.
+  - **Algoritmo:** Backtracking aleatorio con semilla (Seeded RNG).
 
 ### C. Servicios (Services)
 - **`services/aiService.ts`**:
   - **Responsabilidad:** Gateway para LLMs y Modelos de Imagen.
-  - **Texto:** Genera palabras y temas (JSON) usando Gemini Flash o OpenAI.
-  - **Imágenes (Art Studio):** Usa `gemini-2.5-flash-image`.
-    - *Estrategia:* Prompt Engineering específico para "Coloring Book" (B/N) o "Watermark" (Color) para evitar conflictos visuales con el texto.
+  - **Texto:** Genera palabras y temas (JSON).
+  - **Imágenes (Art Studio):** Usa `gemini-2.5-flash-image` con prompts optimizados para no interferir con el texto.
 - **`services/storageService.ts`**:
-  - **Responsabilidad:** Capa de persistencia local.
-  - **Keys:** 
-    - `sopa_creator_db` (Puzzles guardados).
-    - `sopa_creator_settings` (API Keys).
-    - `sopa_creator_art_library` (Plantillas de arte).
+  - **Responsabilidad:** Capa de persistencia local (`localStorage`).
 
 ### D. Visualización (Components)
 - **`components/PuzzleSheet.tsx`**:
   - **Responsabilidad:** Lienzo de renderizado final (WYSIWYG para impresión).
-  - **Estrategia de Capas (Layering Strategy) - CRÍTICO:**
-    1.  **Capa 0 (Fondo):** Imagen generada por IA. `absolute inset-0 z-0`. Opacidad variable según estilo.
+  - **Motor de Maquetación (Layout Engine) - CRÍTICO:**
+    - Recibe `margins` (pulgadas) desde la config.
+    - **Cálculo:** `availableWidth = 8.5 - marginLeft - marginRight`.
+    - **Padding:** Aplica padding CSS directamente al contenedor raíz de la hoja.
+    - **Escalado de Grilla:** Calcula el tamaño de celda (`cellSize`) dividiendo el `availableWidth` por `gridCols`. Si la grilla es muy densa y los márgenes muy grandes, las celdas se hacen pequeñas automáticamente.
+  - **Estrategia de Capas:**
+    1.  **Capa 0 (Fondo):** Imagen generada por IA (`absolute inset-0`).
     2.  **Capa 1 (Contenedor):** `relative z-10`. Contiene todo el texto y la grilla.
-    3.  **Capa Grilla:** Si hay imagen de fondo, la grilla tiene un fondo semitransparente (`rgba(255,255,255,0.85)`) para garantizar legibilidad de letras.
-  - **Escalado Inteligente:** Calcula el tamaño de celda en pulgadas (`in`) basándose en el ancho (7.2") Y alto (9.0") máximos disponibles.
 
 ---
 
 ## 3. ⚙️ Flujos Críticos de Datos
 
-### 1. Flujo de Generación de Puzzle (Rectangular)
-1.  **Input:** Usuario define `Columnas` (Ancho) y `Filas` (Alto) en `App.tsx`.
-2.  **Proceso:** `generatePuzzle(w, h, ...)` crea una matriz `GridCell[h][w]`.
-3.  **Validación:** El generador verifica límites `x < width` y `y < height`.
-4.  **Render:** `PuzzleSheet` itera sobre `grid` (filas) y `row` (columnas) para pintar.
+### 1. Flujo de Layout Dinámico
+1.  **Input:** Usuario mueve sliders de márgenes en `App.tsx` (0 a 3 pulgadas).
+2.  **Estado:** `App.tsx` actualiza el objeto `margins` y lo pasa a `PuzzleSheet`.
+3.  **Render:** 
+    - `PuzzleSheet` aplica `style={{ paddingLeft: margins.left + 'in', ... }}`.
+    - Recalcula `maxGridWidth` y `maxGridHeight`.
+    - Ajusta `cellSize` para que la grilla *nunca* desborde el área segura (Area Pagina - Margenes).
 
-### 2. Flujo "Art Studio" (Generación de Fondos)
-1.  **Prompt:** Usuario describe escena (ej: "Bosque mágico").
-2.  **API Call:** `aiService` construye un prompt técnico:
-    - *B/N:* "Line art, coloring book style, empty center".
-    - *Color:* "Watercolor, pastel, low contrast, watermark".
-3.  **Respuesta:** Recibe Base64 de Gemini.
-4.  **Almacenamiento:** Se guarda en `localStorage` como `ArtTemplate`.
-5.  **Aplicación:** Se inyecta en `PuzzleConfig.backgroundImage`.
-6.  **Visualización:** `PuzzleSheet` detecta la imagen y cambia el fondo del papel de `white` a `transparent` para revelar la imagen debajo.
+### 2. Flujo de Generación de Puzzle (Rectangular)
+1.  **Input:** Usuario define `Columnas` (Ancho) y `Filas` (Alto).
+2.  **Proceso:** `generatePuzzle` crea matriz `GridCell`.
+3.  **Visualización:** La grilla se renderiza dentro del área calculada en el punto 1.
 
-### 3. Flujo de Exportación (PDF)
-1.  **Disparador:** Botón "PDF" en Sidebar.
-2.  **Librería:** `html2pdf.js`.
-3.  **Configuración:**
-    - `scale: 3`: Alta resolución (aprox 300 DPI).
-    - `format: 'letter'`: Coincide con las dimensiones CSS de `PuzzleSheet`.
-4.  **Truco:** `App.tsx` tiene `print:block`. Al exportar, se ignora el escalado CSS (`scale-X`) de la vista previa y se renderiza a tamaño real (8.5x11 in).
+### 3. Flujo "Art Studio"
+1.  **Prompt:** Usuario describe escena.
+2.  **API Call:** Genera imagen B/N o Color.
+3.  **Visualización:** `PuzzleSheet` hace transparente el fondo del papel para revelar la imagen, pero mantiene un fondo semitransparente detrás de la grilla de letras para legibilidad.
 
 ---
 
 ## 4. 📝 Diccionario de Datos (localStorage)
 
+### `PuzzleMargins`
+```typescript
+{
+  top: number;    // Pulgadas (ej: 0.5)
+  bottom: number;
+  left: number;
+  right: number;
+}
+```
+
 ### `SavedPuzzleRecord`
-```typescript
-{
-  id: string;          // UUID
-  name: string;        // Título
-  createdAt: number;   // Timestamp
-  config: PuzzleConfig;// Configuración completa para recrearlo
-  puzzleData: GeneratedPuzzle; // La matriz resuelta (para carga instantánea)
-}
-```
-
-### `ArtTemplate`
-```typescript
-{
-  id: string;
-  name: string;        // Derivado del prompt
-  prompt: string;      // Prompt original
-  imageBase64: string; // Data URL completa
-  style: 'bw' | 'color';
-}
-```
+Ahora incluye `margins` dentro de `config`.
 
 ---
 
-## 5. 🚫 Restricciones y Reglas de Seguridad ("Do Not Break")
+## 5. 🚫 Restricciones y Reglas de Seguridad
 
-1.  **Dimensiones de Papel:** NUNCA modificar `width: 8.5in` y `height: 11in` en `PuzzleSheet.tsx`. Romperá la impresión.
-2.  **Z-Index en Fondos:** La imagen de fondo **NO** debe tener `z-index` negativo si el contenedor padre tiene fondo blanco. La estrategia actual (`div` de imagen absoluto + `div` de contenido relativo z-10) es la única que funciona consistentemente con `html2pdf`.
-3.  **API Keys:** Nunca exponer las keys en el código cliente si se despliega públicamente. Usar `settings` locales o variables de entorno inyectadas.
-4.  **Retro-compatibilidad:** Al cargar un puzzle viejo desde `localStorage`, `gridHeight` puede ser `undefined`. Siempre usar fallback: `height = config.gridHeight || config.gridSize`.
-
----
-
-## 6. 🛠️ Guía de Mantenimiento
-
-*   **Si los fondos no se ven:** Revisa `PuzzleSheet.tsx`. Asegúrate de que el contenedor principal tenga `backgroundColor: 'transparent'` cuando `backgroundImage` existe.
-*   **Si el PDF sale cortado:** Verifica los márgenes en `generatePuzzle` (padding) o ajusta `MAX_WIDTH_INCH` en `PuzzleSheet`.
-*   **Si la IA falla:** Usa el botón "Diagnóstico" en el modal de configuración para probar la conexión independientemente de la lógica del puzzle.
+1.  **Dimensiones de Papel:** NUNCA modificar `width: 8.5in` y `height: 11in` en `PuzzleSheet.tsx` como base. Los márgenes deben aplicarse como *padding* interno, no reduciendo el tamaño del contenedor externo.
+2.  **Z-Index:** La imagen de fondo va en `z-0`, el contenido en `z-10`.
+3.  **Impresión:** `@media print` elimina los márgenes del navegador, por lo que los márgenes internos definidos en `PuzzleSheet` son los únicos que contarán en el papel físico.

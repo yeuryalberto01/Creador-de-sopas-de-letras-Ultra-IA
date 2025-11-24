@@ -43,6 +43,13 @@ export interface ArtTemplate {
   createdAt: number;
 }
 
+export interface PuzzleMargins {
+  top: number;    // Inches
+  bottom: number; // Inches
+  left: number;   // Inches
+  right: number;  // Inches
+}
+
 export interface PuzzleConfig {
   title: string;
   headerLeft: string;
@@ -61,6 +68,7 @@ export interface PuzzleConfig {
   maskShape: ShapeType;
   hiddenMessage?: string;
   fontType: FontType;
+  margins?: PuzzleMargins; // New: Page Margins
   // Art Features
   backgroundId?: string; // Reference to ArtTemplate
   backgroundImage?: string; // Base64 Data

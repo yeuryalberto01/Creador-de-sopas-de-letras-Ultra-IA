@@ -31,8 +31,15 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const { 
     title, headerLeft, headerRight, footerText, pageNumber,
     words, showSolution, styleMode, themeData,
-    fontType, backgroundImage, backgroundStyle 
+    fontType, backgroundImage, backgroundStyle,
+    margins 
   } = config;
+
+  // Defaults if margins not provided (0.5 inch default)
+  const marginTop = margins?.top ?? 0.5;
+  const marginBottom = margins?.bottom ?? 0.5;
+  const marginLeft = margins?.left ?? 0.5;
+  const marginRight = margins?.right ?? 0.5;
 
   // Derive Dimensions
   const gridRows = grid.length;
@@ -56,19 +63,35 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     borderBottomColor: 'black' 
   };
 
-  // --- LOGICA DE ESCALADO PROPORCIONAL ---
-  const MAX_WIDTH_INCH = 7.2; 
-  const MAX_HEIGHT_INCH = 9.0; 
+  // --- LOGICA DE ESCALADO PROPORCIONAL CON MÁRGENES ---
+  // Page size: 8.5 x 11 inches
+  const PAGE_WIDTH = 8.5;
+  const PAGE_HEIGHT = 11.0;
+  
+  // Calculate available space for content
+  const availableWidth = PAGE_WIDTH - marginLeft - marginRight;
+  const availableHeight = PAGE_HEIGHT - marginTop - marginBottom;
+
+  // Reserve space for Header and Footer roughly (in inches)
+  // Header ~ 1.2 inch, Footer/Wordlist ~ 2.5 inches depending on word count
+  const estimatedHeaderHeight = 1.0;
+  const estimatedFooterHeight = 2.0 + (words.length > 20 ? 0.5 : 0); 
+  
+  const maxGridWidth = availableWidth;
+  const maxGridHeight = Math.max(2.0, availableHeight - estimatedHeaderHeight - estimatedFooterHeight);
+
   const BASE_CELL_SIZE_INCH = 0.48; 
 
   let cellSize = BASE_CELL_SIZE_INCH;
   
-  if (gridCols * cellSize > MAX_WIDTH_INCH) {
-      cellSize = MAX_WIDTH_INCH / gridCols;
+  // Shrink cell size if grid exceeds available width
+  if (gridCols * cellSize > maxGridWidth) {
+      cellSize = maxGridWidth / gridCols;
   }
 
-  if (gridRows * cellSize > MAX_HEIGHT_INCH) {
-      cellSize = MAX_HEIGHT_INCH / gridRows;
+  // Shrink cell size if grid exceeds available height
+  if (gridRows * cellSize > maxGridHeight) {
+      cellSize = maxGridHeight / gridRows;
   }
 
   const calculatedWidth = gridCols * cellSize;
@@ -118,17 +141,20 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   return (
     <div 
       id="puzzle-sheet"
-      className="mx-auto relative flex flex-col items-center p-12 box-border transition-colors duration-300 shadow-sm print:shadow-none print:m-0 print:border-none print:w-[8.5in] print:h-[11in] overflow-hidden"
+      className="mx-auto relative flex flex-col items-center box-border transition-all duration-300 shadow-sm print:shadow-none print:m-0 print:border-none print:w-[8.5in] print:h-[11in] overflow-hidden"
       style={{ 
         width: '8.5in', 
         height: '11in',
+        paddingTop: `${marginTop}in`,
+        paddingBottom: `${marginBottom}in`,
+        paddingLeft: `${marginLeft}in`,
+        paddingRight: `${marginRight}in`,
         ...containerStyle
       }}
     >
       {/* --- ART GENERATION LAYER --- */}
-      {/* FIX: Removed -z-10 and used standard absolute. Content below uses relative z-10 to sit on top. */}
       {backgroundImage && (
-          <div className="absolute inset-0 w-full h-full">
+          <div className="absolute inset-0 w-full h-full z-0">
             <img 
                 src={backgroundImage} 
                 alt="Puzzle Background" 
@@ -138,7 +164,6 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                     filter: backgroundStyle === 'bw' ? 'grayscale(100%) contrast(125%)' : 'none'
                 }}
             />
-            {/* White overlay for standard paper feel if needed, but keeping it raw for art */}
           </div>
       )}
 
@@ -154,18 +179,18 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       <div className="relative z-10 w-full h-full flex flex-col">
         
         {/* Header */}
-        <div className={`w-full border-b-2 mb-6 pb-2 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`} style={headerStyle}>
-            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-4" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
+        <div className={`w-full border-b-2 mb-4 pb-2 flex-shrink-0 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`} style={headerStyle}>
+            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-2" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
                 {title || "Sopa de Letras"}
             </h1>
-            <div className="flex justify-between mt-2 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
+            <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
             <span className="min-w-[150px]">{headerLeft}</span>
             <span className="min-w-[150px] text-right">{headerRight}</span>
             </div>
         </div>
 
         {/* Grid Container */}
-        <div className="flex-grow flex items-center justify-center w-full mb-6 relative">
+        <div className="flex-grow flex items-center justify-center w-full mb-4 relative min-h-0">
             <div 
             className={`transition-all duration-300 ${config.maskShape === 'SQUARE' ? 'border-2' : ''}`}
             style={gridContainerStyle}
@@ -196,9 +221,9 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
         </div>
 
         {/* Word List */}
-        <div className={`w-full mt-auto mb-4 px-4 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`}>
+        <div className={`w-full mt-auto mb-2 px-2 flex-shrink-0 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`}>
             <h3 
-                className="text-xl font-bold mb-3 border-b inline-block px-2 py-1 rounded-t-md" 
+                className="text-lg font-bold mb-2 border-b inline-block px-2 py-0.5 rounded-t-md" 
                 style={{ 
                     color: isColor ? 'white' : 'black',
                     backgroundColor: isColor ? themeData.primaryColor : 'transparent',
@@ -209,7 +234,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                 Palabras a encontrar:
             </h3>
             <div 
-            className="grid gap-x-4 gap-y-2 text-sm font-medium w-full"
+            className="grid gap-x-4 gap-y-1 text-xs sm:text-sm font-medium w-full"
             style={{
                 gridTemplateColumns: `repeat(${words.length > 20 ? 4 : 3}, 1fr)`,
                 color: isColor ? themeData.textColor : 'black',
@@ -221,7 +246,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                     return (
                         <div key={idx} className={`flex items-center ${!isFound ? 'line-through text-red-500' : ''}`}>
                             <span 
-                                className="w-3 h-3 border mr-2 inline-block shadow-sm flex-shrink-0"
+                                className="w-2.5 h-2.5 border mr-1.5 inline-block shadow-sm flex-shrink-0"
                                 style={{
                                     borderColor: isColor ? themeData.primaryColor : 'black',
                                     backgroundColor: isColor ? 'white' : 'transparent',
@@ -236,16 +261,16 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
         </div>
         
         {/* Footer */}
-        <div className={`w-full flex justify-between items-end text-gray-500 mt-2 border-t pt-2 pb-1 relative ${backgroundImage ? 'bg-white/90 px-2 rounded-sm' : ''}`}>
+        <div className={`w-full flex justify-between items-end text-gray-500 mt-1 border-t pt-1 pb-0 relative flex-shrink-0 ${backgroundImage ? 'bg-white/90 px-2 rounded-sm' : ''}`}>
             <div className="flex flex-col">
-                <span className="text-[10px] font-medium uppercase tracking-wide">
+                <span className="text-[9px] font-medium uppercase tracking-wide">
                     {footerText !== undefined ? footerText : "Generado con SopaCreator AI"}
                 </span>
-                <span className="font-mono text-[9px] opacity-60">ID: {puzzle.seed}</span>
+                <span className="font-mono text-[8px] opacity-60">ID: {puzzle.seed}</span>
             </div>
             
             {pageNumber && (
-                <div className="text-xl font-bold font-mono text-black absolute right-0 bottom-1">
+                <div className="text-lg font-bold font-mono text-black absolute right-0 bottom-1">
                     {pageNumber}
                 </div>
             )}

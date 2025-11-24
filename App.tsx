@@ -4,8 +4,8 @@ import { generateWordListAI, generateThemeAI, generatePuzzleBackground, PROVIDER
 import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
 import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary, saveArtTemplate, getArtLibrary, deleteArtTemplate } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
-import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle } from 'lucide-react';
+import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate, PuzzleMargins } from './types';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTES DE DIFICULTAD ---
 const DIFFICULTY_PRESETS = {
@@ -397,6 +397,7 @@ export default function App() {
   const [maskShape, setMaskShape] = useState<ShapeType>('SQUARE');
   const [fontType, setFontType] = useState<FontType>('CLASSIC');
   const [hiddenMessage, setHiddenMessage] = useState('');
+  const [margins, setMargins] = useState<PuzzleMargins>({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
 
   // --- Art Features ---
   const [backgroundImage, setBackgroundImage] = useState<string | undefined>(undefined);
@@ -565,6 +566,7 @@ export default function App() {
         words: wordList, 
         showSolution, seed: currentSeed, styleMode, themeData,
         maskShape, hiddenMessage, fontType,
+        margins, // Save margins
         // Save Art State
         backgroundImage: isArtActive ? backgroundImage : undefined,
         backgroundStyle: isArtActive ? backgroundStyle : undefined
@@ -593,6 +595,7 @@ export default function App() {
       setMaskShape(record.config.maskShape || 'SQUARE');
       setHiddenMessage(record.config.hiddenMessage || '');
       setFontType(record.config.fontType || 'CLASSIC');
+      setMargins(record.config.margins || { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
       
       // Art Load
       if (record.config.backgroundImage) {
@@ -1009,6 +1012,72 @@ export default function App() {
                 </div>
             </div>
 
+            {/* SECTION 6: PAGE CONFIG (MARGINS) */}
+            <div className="space-y-3">
+                 <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
+                    <ScanLine className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-widest">6. Configuración de Página</span>
+                </div>
+                
+                <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                    <div className="flex justify-between items-center mb-3">
+                        <label className="text-[10px] uppercase text-slate-500 font-bold">Márgenes (Pulgadas)</label>
+                        <Tooltip text="Restablecer márgenes a 0.5 por defecto" position="left">
+                            <button 
+                                onClick={() => setMargins({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 })}
+                                className="text-[9px] text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1"
+                            >
+                                <RotateCcw className="w-3 h-3" /> Reset
+                            </button>
+                        </Tooltip>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        {[
+                            { key: 'top', label: 'Superior', max: 3 },
+                            { key: 'bottom', label: 'Inferior', max: 3 },
+                            { key: 'left', label: 'Izquierdo', max: 2 },
+                            { key: 'right', label: 'Derecho', max: 2 },
+                        ].map((m) => (
+                            <div key={m.key} className="bg-slate-900/50 p-2 rounded border border-slate-700/50 hover:border-indigo-500/30 transition-colors">
+                                <div className="flex justify-between items-center mb-1.5 gap-2">
+                                    <span className="text-[10px] text-slate-400 font-medium">{m.label}</span>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max={m.max}
+                                            step="0.1"
+                                            value={margins[m.key as keyof PuzzleMargins]}
+                                            onChange={(e) => {
+                                                let val = parseFloat(e.target.value);
+                                                if (isNaN(val)) val = 0;
+                                                if (val > m.max) val = m.max;
+                                                if (val < 0) val = 0;
+                                                setMargins({...margins, [m.key]: val});
+                                            }}
+                                            className="w-12 text-right bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-[10px] font-mono text-indigo-300 focus:border-indigo-500 outline-none appearance-none"
+                                        />
+                                        <span className="text-[9px] text-slate-500 ml-1">"</span>
+                                    </div>
+                                </div>
+                                <Tooltip text={`Ajustar margen ${m.label.toLowerCase()}`} position="top">
+                                    <input 
+                                        type="range" 
+                                        min="0" 
+                                        max={m.max} 
+                                        step="0.1" 
+                                        value={margins[m.key as keyof PuzzleMargins]} 
+                                        onChange={(e) => setMargins({...margins, [m.key]: parseFloat(e.target.value)})}
+                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                    />
+                                </Tooltip>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         {/* Footer Actions */}
@@ -1085,7 +1154,8 @@ export default function App() {
                styleMode, themeData, seed: currentSeed,
                maskShape, hiddenMessage, fontType,
                backgroundImage: isArtActive ? backgroundImage : undefined,
-               backgroundStyle: isArtActive ? backgroundStyle : undefined
+               backgroundStyle: isArtActive ? backgroundStyle : undefined,
+               margins // Pass the new margin config
              }}
            />
         </div>
