@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateWordListAI, generateThemeAI, PROVIDER_PRESETS, testApiConnection } from './services/aiService';
 import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
@@ -390,7 +391,8 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<Difficulty>(Difficulty.MEDIUM);
   
   // --- Smart Features ---
-  const [gridSize, setGridSize] = useState<number>(15);
+  const [gridSize, setGridSize] = useState<number>(15); // Represents Width/Columns
+  const [gridRows, setGridRows] = useState<number>(15); // Represents Height/Rows
   const [isSmartGrid, setIsSmartGrid] = useState(true); 
   const [styleMode, setStyleMode] = useState<'bw' | 'color'>('bw');
   const [themeData, setThemeData] = useState<PuzzleTheme | undefined>(undefined);
@@ -416,6 +418,7 @@ export default function App() {
       if (isSmartGrid) {
           const preset = DIFFICULTY_PRESETS[newDifficulty];
           setGridSize(preset.defaultSize);
+          setGridRows(preset.defaultSize); // Keep it square in auto mode
       }
   };
 
@@ -424,7 +427,9 @@ export default function App() {
     const wordsToUse = forceWords || wordList;
     
     // 1. Calculate Size
-    let sizeToUse = gridSize;
+    let widthToUse = gridSize;
+    let heightToUse = gridRows;
+
     if (isSmartGrid) {
         // We use the difficulty preset logic here usually, but also respect words
         // If words fit in default size, use default. If not, auto-expand.
@@ -436,13 +441,17 @@ export default function App() {
         let shapeMultiplier = maskShape === 'SQUARE' ? 1.0 : 1.3;
         
         // If word list is huge, we must expand beyond preset
-        sizeToUse = Math.max(presetSize, Math.ceil(calculated * shapeMultiplier));
+        let sizeToUse = Math.max(presetSize, Math.ceil(calculated * shapeMultiplier));
         
         // Ensure we stick to reasonable limits per difficulty
         const [min, max] = DIFFICULTY_PRESETS[difficulty].gridRange;
         sizeToUse = Math.max(min, Math.min(sizeToUse, max));
         
-        setGridSize(sizeToUse);
+        widthToUse = sizeToUse;
+        heightToUse = sizeToUse; // Smart mode enforces Square for consistency
+        
+        setGridSize(widthToUse);
+        setGridRows(heightToUse);
     }
 
     // 2. Theme Logic
@@ -453,12 +462,12 @@ export default function App() {
         setThemeData(generateThemeFromTopic(themeSource));
     }
 
-    // 3. Generate
-    const puzzle = generatePuzzle(sizeToUse, wordsToUse, difficulty, seedToUse, maskShape, hiddenMessage);
+    // 3. Generate with Rectangular Support
+    const puzzle = generatePuzzle(widthToUse, heightToUse, wordsToUse, difficulty, seedToUse, maskShape, hiddenMessage);
     setGeneratedPuzzle(puzzle);
     setCurrentSeed(puzzle.seed);
     
-  }, [gridSize, wordList, difficulty, seedInput, isSmartGrid, styleMode, topic, themeData, maskShape, hiddenMessage]);
+  }, [gridSize, gridRows, wordList, difficulty, seedInput, isSmartGrid, styleMode, topic, themeData, maskShape, hiddenMessage]);
 
   // Initial Load
   useEffect(() => {
@@ -509,7 +518,8 @@ export default function App() {
     
     const config: PuzzleConfig = {
         title, headerLeft, headerRight, footerText, pageNumber, 
-        difficulty, gridSize, words: wordList, 
+        difficulty, gridSize, gridHeight: gridRows, // Save both dims
+        words: wordList, 
         showSolution, seed: currentSeed, styleMode, themeData,
         maskShape, hiddenMessage, fontType
     };
@@ -526,6 +536,7 @@ export default function App() {
       setPageNumber(record.config.pageNumber || "");
       setDifficulty(record.config.difficulty);
       setGridSize(record.config.gridSize);
+      setGridRows(record.config.gridHeight || record.config.gridSize); // Fallback to square
       setIsSmartGrid(false); 
       setWordList(record.config.words);
       setSeedInput(record.config.seed || '');
@@ -609,7 +620,7 @@ export default function App() {
                 </div>
                 SopaCreator
             </h1>
-            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.0</p>
+            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.1</p>
           </div>
           <div className="flex gap-2">
              <Tooltip text="Biblioteca Guardada" position="bottom">
@@ -778,20 +789,39 @@ export default function App() {
                     </div>
                 ) : (
                     <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg space-y-4 mt-2">
-                        <div className="flex justify-between items-end">
-                            <label className="text-[10px] uppercase text-slate-400 font-bold">Tamaño Personalizado</label>
-                            <span className="text-sm font-mono text-indigo-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
-                                {gridSize} x {gridSize}
-                            </span>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div>
+                                <div className="flex justify-between items-end mb-1">
+                                    <label className="text-[9px] uppercase text-slate-400 font-bold">Columnas</label>
+                                    <span className="text-xs font-mono text-indigo-300 font-bold">{gridSize}</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="8" 
+                                    max="30" 
+                                    value={gridSize} 
+                                    onChange={(e) => setGridSize(Number(e.target.value))}
+                                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                />
+                             </div>
+                             <div>
+                                <div className="flex justify-between items-end mb-1">
+                                    <label className="text-[9px] uppercase text-slate-400 font-bold">Filas</label>
+                                    <span className="text-xs font-mono text-indigo-300 font-bold">{gridRows}</span>
+                                </div>
+                                <input 
+                                    type="range" 
+                                    min="8" 
+                                    max="30" 
+                                    value={gridRows} 
+                                    onChange={(e) => setGridRows(Number(e.target.value))}
+                                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                />
+                             </div>
                         </div>
-                        <input 
-                            type="range" 
-                            min="8" 
-                            max="30" 
-                            value={gridSize} 
-                            onChange={(e) => setGridSize(Number(e.target.value))}
-                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                        />
+                        <div className="text-center text-[10px] text-slate-500">
+                            Tamaño: <span className="text-white">{gridSize}x{gridRows}</span>
+                        </div>
                     </div>
                 )}
 
@@ -977,7 +1007,8 @@ export default function App() {
              puzzle={generatedPuzzle}
              config={{
                title, headerLeft, headerRight, footerText, pageNumber, 
-               difficulty, gridSize, words: wordList, showSolution, 
+               difficulty, gridSize, gridHeight: gridRows, // Pass both
+               words: wordList, showSolution, 
                styleMode, themeData, seed: currentSeed,
                maskShape, hiddenMessage, fontType
              }}

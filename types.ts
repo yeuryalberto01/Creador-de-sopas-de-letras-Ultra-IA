@@ -1,3 +1,4 @@
+
 export enum Difficulty {
   EASY = 'Fácil',
   MEDIUM = 'Intermedio',
@@ -40,7 +41,8 @@ export interface PuzzleConfig {
   footerText?: string;
   pageNumber?: string;
   difficulty: Difficulty;
-  gridSize: number;
+  gridSize: number; // Represents WIDTH (Columns)
+  gridHeight?: number; // Represents HEIGHT (Rows). Optional for backward compat.
   words: string[];
   showSolution: boolean;
   seed?: string; 

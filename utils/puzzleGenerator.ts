@@ -1,3 +1,4 @@
+
 import { Difficulty, GridCell, PlacedWord, GeneratedPuzzle, PuzzleTheme, ShapeType } from '../types';
 
 // Simple Pseudo-Random Number Generator (Mulberry32)
@@ -63,15 +64,17 @@ const LETTERS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ";
 /**
  * Checks if a coordinate is inside the requested shape mask.
  * Coordinates are normalized -1 to 1 for calculation.
+ * Now handles Rectangular bounding boxes.
  */
-const isInsideShape = (x: number, y: number, size: number, shape: ShapeType): boolean => {
+const isInsideShape = (x: number, y: number, w: number, h: number, shape: ShapeType): boolean => {
     if (shape === 'SQUARE') return true;
 
-    // Normalize to -1 to 1 range
-    const nx = (x / (size - 1)) * 2 - 1;
-    const ny = (y / (size - 1)) * 2 - 1;
+    // Normalize to -1 to 1 range based on dimensions
+    const nx = (x / (w - 1)) * 2 - 1;
+    const ny = (y / (h - 1)) * 2 - 1;
 
     if (shape === 'CIRCLE') {
+        // In a rectangle, this creates an ellipse which is desirable behavior
         return (nx * nx + ny * ny) <= 1.0;
     }
 
@@ -159,7 +162,8 @@ export const generateThemeFromTopic = (topic: string): PuzzleTheme => {
 };
 
 export const generatePuzzle = (
-  size: number,
+  width: number,
+  heightInput: number | undefined,
   words: string[],
   difficulty: Difficulty,
   seedInput?: string,
@@ -167,16 +171,18 @@ export const generatePuzzle = (
   hiddenMessage?: string
 ): GeneratedPuzzle => {
   
+  const height = heightInput || width; // Fallback to square if height not provided
+
   // 1. Seed Initialization: Ensures reproducibility
   const seed = seedInput || Math.random().toString(36).substring(2, 8).toUpperCase();
   const rng = new SeededRNG(seed);
 
-  // Initialize Grid with validity mask
-  let grid: GridCell[][] = Array.from({ length: size }, (_, y) =>
-    Array.from({ length: size }, (_, x) => ({
+  // Initialize Grid with validity mask (Rectangular)
+  let grid: GridCell[][] = Array.from({ length: height }, (_, y) =>
+    Array.from({ length: width }, (_, x) => ({
       letter: '',
       isWord: false,
-      isValid: isInsideShape(x, y, size, shape),
+      isValid: isInsideShape(x, y, width, height, shape),
       x,
       y
     }))
@@ -187,21 +193,19 @@ export const generatePuzzle = (
   const directions = getAllowedDirections(difficulty);
   
   // Sort words by length (desc) to place hardest ones first
-  // We use localeCompare as secondary sort to ensure deterministic order regardless of input order
   const sortedWords = [...words].sort((a, b) => b.length - a.length || a.localeCompare(b));
 
   // Place Words
   for (const word of sortedWords) {
     let placed = false;
     let attempts = 0;
-    // Hard mode gets more attempts to force a fit in a tighter grid
     const maxAttempts = difficulty === Difficulty.HARD ? 500 : 200;
 
     while (!placed && attempts < maxAttempts) {
       attempts++;
       const dir = directions[rng.nextInfo(directions.length)];
-      const startX = rng.nextInfo(size);
-      const startY = rng.nextInfo(size);
+      const startX = rng.nextInfo(width);
+      const startY = rng.nextInfo(height);
 
       // Early check: Is start point valid?
       if (!grid[startY][startX].isValid) continue;
@@ -209,8 +213,8 @@ export const generatePuzzle = (
       const endX = startX + dir[0] * (word.length - 1);
       const endY = startY + dir[1] * (word.length - 1);
 
-      // Boundary Check
-      if (endX < 0 || endX >= size || endY < 0 || endY >= size) continue;
+      // Boundary Check (Rectangular)
+      if (endX < 0 || endX >= width || endY < 0 || endY >= height) continue;
 
       let fits = true;
       for (let i = 0; i < word.length; i++) {
@@ -218,7 +222,7 @@ export const generatePuzzle = (
         const y = startY + dir[1] * i;
         const cell = grid[y][x];
         
-        // Mask Check: Every cell of the word must be inside the shape
+        // Mask Check
         if (!cell.isValid) {
             fits = false; 
             break;
@@ -254,15 +258,14 @@ export const generatePuzzle = (
   }
 
   // Fill Empty Cells
-  // This must also use the RNG to ensure the filler letters are the same for the same seed
   const cleanMessage = hiddenMessage 
     ? hiddenMessage.toUpperCase().replace(/[^A-ZÑ]/g, '') 
     : '';
   
   let messageIndex = 0;
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
       if (grid[y][x].isValid && grid[y][x].letter === '') {
         if (cleanMessage && messageIndex < cleanMessage.length) {
             // Use next letter from hidden message

@@ -1,3 +1,4 @@
+
 # 🏗️ Arquitectura del Proyecto: SopaCreator AI
 
 Este documento sirve como la **Fuente de la Verdad** para cualquier Inteligencia Artificial o desarrollador que trabaje en este proyecto. Describe la estructura, la lógica de negocio, los flujos de datos y las restricciones críticas para evitar romper la funcionalidad existente.
@@ -19,6 +20,7 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 - **`App.tsx`**: 
   - **Función:** Es el "Cerebro" (Controller). Maneja todo el estado global, modales y orquesta la comunicación entre servicios.
   - **UI:** Contiene la Sidebar (controles), el Main (previsualización) y los Modales.
+  - **Estado de Grilla:** Maneja independientemente `gridSize` (Ancho/Columnas) y `gridRows` (Alto/Filas).
 - **`types.ts`**: 
   - **Función:** Define los contratos de datos (`GeneratedPuzzle`, `PuzzleConfig`, `AISettings`).
   - **Regla:** Si cambias una interfaz aquí, debes actualizar `puzzleGenerator.ts` y `storageService.ts`.
@@ -27,6 +29,7 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 - **`utils/puzzleGenerator.ts`**: 
   - **Función:** Algoritmo matemático puro.
   - **Componentes:** RNG (Generador de números aleatorios con semilla), lógica de colocación de palabras, detección de colisiones y máscaras de formas (`ShapeType`).
+  - **Soporte Rectangular:** El generador ahora soporta ancho y alto independientes. Las formas (Círculos, Corazones) se escalan al cuadro delimitador (bounding box) de la grilla rectangular.
 - **`services/aiService.ts`**: 
   - **Función:** Capa de comunicación con LLMs.
   - **Soporte:** Google Gemini (SDK nativo) y OpenAI Compatible (DeepSeek, Grok, Local) via REST.
@@ -38,7 +41,7 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 - **`components/PuzzleSheet.tsx`**: 
   - **Función:** El componente visual que se renderiza en pantalla Y se imprime.
   - **CRÍTICO:** Utiliza medidas en pulgadas (`in`) y `aspect-ratio` para garantizar la fidelidad al imprimir.
-  - **Estilos:** Maneja lógica compleja de renderizado condicional para colores, formas y modo "Solución".
+  - **Escalado:** Implementa lógica para reducir el tamaño de celda si la grilla excede 7.2" de ancho o 9.0" de alto, asegurando que siempre quepa en la hoja carta.
 
 ---
 
@@ -47,8 +50,8 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 ### A. Generación del Puzzle
 1. Usuario cambia configuración en Sidebar (`App.tsx`).
 2. Se llama a `handleGeneratePuzzle()`.
-3. `calculateSmartGridSize` decide el tamaño óptimo.
-4. `generatePuzzle` (en utils) crea la matriz bidimensional (`GridCell[][]`).
+3. `calculateSmartGridSize` decide el tamaño óptimo (para modo Auto).
+4. `generatePuzzle` (en utils) crea la matriz bidimensional (`GridCell[][]`) usando filas y columnas específicas.
 5. El estado `generatedPuzzle` se actualiza.
 6. `<PuzzleSheet />` recibe los nuevos datos y se re-renderiza.
 
@@ -74,7 +77,7 @@ Este es el punto más delicado de la app.
 
 ### Sidebar (Panel Izquierdo)
 1. **Contenido:** Input para Tema (IA) y lista de palabras manual.
-2. **Grilla:** Switch Auto/Manual. Sliders de tamaño y dificultad.
+2. **Grilla:** Switch Auto/Manual. Sliders para **Columnas** y **Filas** independientes.
 3. **Diseño:** Selector de Formas (Cuadrado, Corazón, etc.), Fuentes y Modo Color.
 4. **Textos:** Títulos y campos de metadatos.
 5. **Footer Actions:** Botones grandes de Generar, Guardar, PDF e Imprimir.

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { GeneratedPuzzle, PuzzleConfig, FontType } from '../types';
 
@@ -29,9 +30,13 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const { grid, placedWords } = puzzle;
   const { 
     title, headerLeft, headerRight, footerText, pageNumber,
-    gridSize, words, showSolution, styleMode, themeData,
+    words, showSolution, styleMode, themeData,
     fontType 
   } = config;
+
+  // Derive Dimensions
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || 10;
 
   // Define styles based on mode
   const isColor = styleMode === 'color' && themeData;
@@ -48,34 +53,37 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   };
 
   // --- LOGICA DE ESCALADO PROPORCIONAL (NUEVA) ---
-  // Objetivo: Mantener el tamaño de la celda constante (y legible)
-  // haciendo que el tamaño total del puzzle sea proporcional a la grilla (NxN).
-  // Solo se reduce el tamaño de celda si excede el ancho máximo de impresión.
+  // Objetivo: Mantener el tamaño de la celda constante y cuadrada.
+  // Limites: 7.2" ancho y aprox 9" alto.
 
-  const MAX_WIDTH_INCH = 7.2; // Ancho máximo seguro para impresión (Letter con márgenes)
-  const BASE_CELL_SIZE_INCH = 0.48; // Tamaño ideal de celda (aprox 1.2cm) - Legible y elegante
+  const MAX_WIDTH_INCH = 7.2; 
+  const MAX_HEIGHT_INCH = 9.0; // Espacio disponible vertical aprox
+  const BASE_CELL_SIZE_INCH = 0.48; 
 
-  // 1. Calcular ancho ideal basado en proporcionalidad directa
-  let calculatedWidth = gridSize * BASE_CELL_SIZE_INCH;
-
-  // 2. Aplicar límite máximo (Clamping Max Only)
-  // Si el puzzle es gigante (20x20), reducimos el tamaño de celda para que quepa.
-  // Si es pequeño (10x10), se queda pequeño (4.8 pulgadas).
-  if (calculatedWidth > MAX_WIDTH_INCH) {
-      calculatedWidth = MAX_WIDTH_INCH;
+  // 1. Calcular tamaño de celda ideal basado en el ancho deseado
+  let cellSize = BASE_CELL_SIZE_INCH;
+  
+  // 2. Si el ancho excede el máximo, reducir celda
+  if (gridCols * cellSize > MAX_WIDTH_INCH) {
+      cellSize = MAX_WIDTH_INCH / gridCols;
   }
 
-  // 3. Calcular tamaño real final de celda y fuente
-  const realCellSizeInch = calculatedWidth / gridSize;
-  const fontSizeInch = realCellSizeInch * 0.62; // La letra ocupa ~62% de la celda
+  // 3. Si el alto excede el máximo (para grillas muy altas), reducir celda aun más
+  if (gridRows * cellSize > MAX_HEIGHT_INCH) {
+      cellSize = MAX_HEIGHT_INCH / gridRows;
+  }
+
+  const calculatedWidth = gridCols * cellSize;
+  const calculatedHeight = gridRows * cellSize;
+  const fontSizeInch = cellSize * 0.62;
 
   const gridContainerStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
-    gridTemplateRows: `repeat(${gridSize}, 1fr)`,
+    gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+    gridTemplateRows: `repeat(${gridRows}, 1fr)`,
     width: `${calculatedWidth}in`, 
-    height: `${calculatedWidth}in`, // Mantener aspecto cuadrado
-    margin: '0 auto', // Centrado horizontal dentro del flex container
+    height: `${calculatedHeight}in`, 
+    margin: '0 auto', 
     backgroundColor: config.maskShape === 'SQUARE' 
         ? (isColor ? themeData.secondaryColor : 'white') 
         : 'transparent',
@@ -84,14 +92,12 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
 
   const cellStyle = (isWord: boolean, isValid: boolean): React.CSSProperties => ({
     color: isColor ? themeData.textColor : 'black',
-    // In solution mode, highlight found words
     backgroundColor: showSolution && isWord 
         ? (isColor ? themeData.primaryColor : '#d1d5db') 
         : (isValid && config.maskShape === 'SQUARE' ? 'transparent' : (isValid && isColor ? themeData.secondaryColor : (isValid ? 'white' : 'transparent'))),
-    // In solution mode, ensure text is readable against dark highlight
     ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
     fontFamily: fontFamily,
-    opacity: isValid ? 1 : 0, // Hide invalid cells
+    opacity: isValid ? 1 : 0, 
     borderRadius: config.maskShape !== 'SQUARE' ? '20%' : '0'
   });
 
