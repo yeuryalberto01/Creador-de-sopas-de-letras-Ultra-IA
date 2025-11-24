@@ -47,25 +47,27 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     borderBottomColor: 'black' 
   };
 
-  // --- LOGICA DE ESCALADO PROPORCIONAL ---
-  // El objetivo es que una grilla de 10x10 se vea pequeña y elegante,
-  // y una de 20x20 ocupe todo el ancho disponible.
-  const TARGET_CELL_SIZE_INCH = 0.42; // Tamaño ideal de celda
-  const MAX_WIDTH_INCH = 6.5; // Ancho máximo imprimible (márgenes seguros)
-  const MIN_WIDTH_INCH = 3.5; // Ancho mínimo estético
+  // --- LOGICA DE ESCALADO PROPORCIONAL (NUEVA) ---
+  // Objetivo: Mantener el tamaño de la celda constante (y legible)
+  // haciendo que el tamaño total del puzzle sea proporcional a la grilla (NxN).
+  // Solo se reduce el tamaño de celda si excede el ancho máximo de impresión.
 
-  // 1. Calcular ancho teórico
-  let calculatedWidth = gridSize * TARGET_CELL_SIZE_INCH;
+  const MAX_WIDTH_INCH = 7.2; // Ancho máximo seguro para impresión (Letter con márgenes)
+  const BASE_CELL_SIZE_INCH = 0.48; // Tamaño ideal de celda (aprox 1.2cm) - Legible y elegante
 
-  // 2. Aplicar límites (Clamping)
-  // Si supera el máximo, se ajusta al máximo (las celdas se encogen)
-  // Si es menor al mínimo, se ajusta al mínimo (las celdas crecen)
-  if (calculatedWidth > MAX_WIDTH_INCH) calculatedWidth = MAX_WIDTH_INCH;
-  if (calculatedWidth < MIN_WIDTH_INCH) calculatedWidth = MIN_WIDTH_INCH;
+  // 1. Calcular ancho ideal basado en proporcionalidad directa
+  let calculatedWidth = gridSize * BASE_CELL_SIZE_INCH;
 
-  // 3. Calcular tamaño real de celda y fuente
+  // 2. Aplicar límite máximo (Clamping Max Only)
+  // Si el puzzle es gigante (20x20), reducimos el tamaño de celda para que quepa.
+  // Si es pequeño (10x10), se queda pequeño (4.8 pulgadas).
+  if (calculatedWidth > MAX_WIDTH_INCH) {
+      calculatedWidth = MAX_WIDTH_INCH;
+  }
+
+  // 3. Calcular tamaño real final de celda y fuente
   const realCellSizeInch = calculatedWidth / gridSize;
-  const fontSizeInch = realCellSizeInch * 0.65; // La letra ocupa ~65% de la celda
+  const fontSizeInch = realCellSizeInch * 0.62; // La letra ocupa ~62% de la celda
 
   const gridContainerStyle: React.CSSProperties = {
     display: 'grid',
