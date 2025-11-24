@@ -1,7 +1,9 @@
-import { SavedPuzzleRecord, AppSettings, GeneratedPuzzle, PuzzleConfig } from "../types";
+
+import { SavedPuzzleRecord, AppSettings, GeneratedPuzzle, PuzzleConfig, ArtTemplate } from "../types";
 
 const STORAGE_KEY_DB = "sopa_creator_db";
 const STORAGE_KEY_SETTINGS = "sopa_creator_settings";
+const STORAGE_KEY_ART = "sopa_creator_art_library";
 
 // --- Settings Management ---
 const DEFAULT_SETTINGS: AppSettings = {
@@ -53,4 +55,23 @@ export const deletePuzzleFromLibrary = (id: string) => {
     const records = getLibrary();
     const filtered = records.filter(r => r.id !== id);
     localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(filtered));
+};
+
+// --- Art Template Management ---
+
+export const saveArtTemplate = (template: ArtTemplate) => {
+    const library = getArtLibrary();
+    library.unshift(template);
+    localStorage.setItem(STORAGE_KEY_ART, JSON.stringify(library));
+};
+
+export const getArtLibrary = (): ArtTemplate[] => {
+    const saved = localStorage.getItem(STORAGE_KEY_ART);
+    return saved ? JSON.parse(saved) : [];
+};
+
+export const deleteArtTemplate = (id: string) => {
+    const library = getArtLibrary();
+    const filtered = library.filter(t => t.id !== id);
+    localStorage.setItem(STORAGE_KEY_ART, JSON.stringify(filtered));
 };

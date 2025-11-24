@@ -34,6 +34,15 @@ export interface PuzzleTheme {
   backgroundColor: string; // Page background
 }
 
+export interface ArtTemplate {
+  id: string;
+  name: string;
+  prompt: string;
+  imageBase64: string;
+  style: 'bw' | 'color';
+  createdAt: number;
+}
+
 export interface PuzzleConfig {
   title: string;
   headerLeft: string;
@@ -52,6 +61,10 @@ export interface PuzzleConfig {
   maskShape: ShapeType;
   hiddenMessage?: string;
   fontType: FontType;
+  // Art Features
+  backgroundId?: string; // Reference to ArtTemplate
+  backgroundImage?: string; // Base64 Data
+  backgroundStyle?: 'bw' | 'color';
 }
 
 export interface GeneratedPuzzle {

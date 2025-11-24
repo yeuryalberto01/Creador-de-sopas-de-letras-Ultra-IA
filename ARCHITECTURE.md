@@ -20,9 +20,10 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 - **`App.tsx`**: 
   - **Función:** Es el "Cerebro" (Controller). Maneja todo el estado global, modales y orquesta la comunicación entre servicios.
   - **UI:** Contiene la Sidebar (controles), el Main (previsualización) y los Modales.
+  - **Art Studio:** Ahora incluye un modal completo para generar, gestionar y aplicar imágenes de fondo generadas por IA.
   - **Estado de Grilla:** Maneja independientemente `gridSize` (Ancho/Columnas) y `gridRows` (Alto/Filas).
 - **`types.ts`**: 
-  - **Función:** Define los contratos de datos (`GeneratedPuzzle`, `PuzzleConfig`, `AISettings`).
+  - **Función:** Define los contratos de datos (`GeneratedPuzzle`, `PuzzleConfig`, `AISettings`, `ArtTemplate`).
   - **Regla:** Si cambias una interfaz aquí, debes actualizar `puzzleGenerator.ts` y `storageService.ts`.
 
 ### Lógica (Utils & Services)
@@ -33,14 +34,19 @@ Una aplicación web profesional (React + TypeScript) para generar, personalizar,
 - **`services/aiService.ts`**: 
   - **Función:** Capa de comunicación con LLMs.
   - **Soporte:** Google Gemini (SDK nativo) y OpenAI Compatible (DeepSeek, Grok, Local) via REST.
+  - **Generación de Imágenes:** Utiliza `gemini-2.5-flash-image` para crear bordes en blanco y negro o fondos artísticos.
   - **Regla:** Siempre limpia y valida el JSON devuelto por la IA.
 - **`services/storageService.ts`**: 
-  - **Función:** Persistencia en `localStorage` (Configuración y Biblioteca de Puzzles).
+  - **Función:** Persistencia en `localStorage` (Configuración, Biblioteca de Puzzles, y Biblioteca de Arte).
 
 ### Visualización (Components)
 - **`components/PuzzleSheet.tsx`**: 
   - **Función:** El componente visual que se renderiza en pantalla Y se imprime.
   - **CRÍTICO:** Utiliza medidas en pulgadas (`in`) y `aspect-ratio` para garantizar la fidelidad al imprimir.
+  - **Capas:** 
+    1. Fondo (Imagen IA Generada)
+    2. Decoración CSS (Si es modo color y sin imagen)
+    3. Grilla y Textos
   - **Escalado:** Implementa lógica para reducir el tamaño de celda si la grilla excede 7.2" de ancho o 9.0" de alto, asegurando que siempre quepa en la hoja carta.
 
 ---
@@ -64,12 +70,12 @@ Este es el punto más delicado de la app.
   - Ignora los estilos de impresión del navegador y toma una "foto" del elemento DOM.
   - **Regla:** El contenedor padre en `App.tsx` tiene transformaciones CSS (`scale-[0.65]`) para que quepa en pantalla. Al imprimir/exportar, estas transformaciones se anulan (`print:scale-100`, `print:transform-none`) para que salga a tamaño real.
 
-### C. Integración IA
-1. `App.tsx` recoge el `topic` y la configuración de API.
-2. Llama a `aiService.generateWordListAI`.
-3. El Prompt fuerza una salida JSON estricta.
-4. Si falla el parseo JSON, el servicio lanza error controlado.
-5. Si tiene éxito, se actualiza `wordList` y se regenera el puzzle automáticamente.
+### C. Integración IA & Arte
+1. **Palabras:** `App.tsx` -> `aiService.generateWordListAI`. Retorna JSON.
+2. **Arte:** `Art Studio Modal` -> `aiService.generatePuzzleBackground`.
+   - Prompt Engineering específico para B/N (Line Art) vs Color (Watermark).
+   - Retorna Base64 de la imagen generada.
+   - Se guarda en `localStorage` como `ArtTemplate`.
 
 ---
 
@@ -78,13 +84,16 @@ Este es el punto más delicado de la app.
 ### Sidebar (Panel Izquierdo)
 1. **Contenido:** Input para Tema (IA) y lista de palabras manual.
 2. **Grilla:** Switch Auto/Manual. Sliders para **Columnas** y **Filas** independientes.
-3. **Diseño:** Selector de Formas (Cuadrado, Corazón, etc.), Fuentes y Modo Color.
+3. **Diseño y Arte:** 
+   - Botón "Arte y Decoración" (Abre Modal).
+   - Selector de Formas (Cuadrado, Corazón, etc.).
+   - Fuentes y Modo Color.
 4. **Textos:** Títulos y campos de metadatos.
 5. **Footer Actions:** Botones grandes de Generar, Guardar, PDF e Imprimir.
 
-### Barra Flotante (Sobre la hoja)
-- **ID Seed:** Muestra la semilla actual.
-- **Botón Solución:** Alterna visualmente el estado `showSolution` que colorea las celdas en `PuzzleSheet`.
+### Modal Art Studio
+- **Izquierda:** Prompt de entrada, Selector de Estilo (B/N vs Color), Botón Generar.
+- **Derecha:** Galería de plantillas guardadas con vista previa y botones Aplicar/Borrar.
 
 ### Modales
 - **Configuración (Engranaje):** Gestiona API Keys y realiza el "Diagnóstico del Sistema".

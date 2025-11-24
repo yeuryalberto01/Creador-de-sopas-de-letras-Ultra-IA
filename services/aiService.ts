@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISettings, PuzzleTheme } from "../types";
 
@@ -266,5 +267,65 @@ export const generateThemeAI = async (settings: AISettings, topic: string): Prom
     } catch (error) {
         console.error("Theme Generation Error:", error);
         return null;
+    }
+};
+
+/**
+ * Generates a background image using Gemini 2.5 Flash Image.
+ * Supports Black & White (Line Art) or Color (Watermark).
+ */
+export const generatePuzzleBackground = async (settings: AISettings, prompt: string, style: 'bw' | 'color'): Promise<string> => {
+    // Requires a Google API Key, can't use generic OpenAI endpoints easily for image gen with this specific setup
+    const apiKey = settings.apiKey || process.env.API_KEY;
+    if (!apiKey) throw new Error("Se requiere API Key de Google para generar imágenes.");
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    // Construct Prompt based on Style
+    let finalPrompt = "";
+    if (style === 'bw') {
+        finalPrompt = `
+            High quality page border for a puzzle book about: ${prompt}.
+            Style: Black and white line art, coloring book style, clean heavy lines.
+            Layout: A decorative frame border. The center MUST be empty white space.
+            Constraint: Do not include text, letters, or words.
+            Aspect Ratio: Vertical 3:4.
+        `;
+    } else {
+        finalPrompt = `
+            High quality artistic background wallpaper about: ${prompt}.
+            Style: Watercolor texture, faded pastel colors, very low contrast, watermark style.
+            Layout: Full page pattern but very light and faded in the middle.
+            Constraint: Do not include text, letters, or words.
+            Aspect Ratio: Vertical 3:4.
+        `;
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image', // Fast, efficient model
+            contents: {
+                parts: [
+                    { text: finalPrompt }
+                ]
+            },
+            config: {
+                imageConfig: {
+                    aspectRatio: "3:4", // Matches Letter/A4 roughly
+                }
+            }
+        });
+
+        // Extract Image
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+        throw new Error("No se generó ninguna imagen.");
+
+    } catch (error) {
+        console.error("Image Gen Error:", error);
+        throw error;
     }
 };
