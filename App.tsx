@@ -76,6 +76,91 @@ const Tooltip: React.FC<TooltipProps> = ({
   );
 };
 
+// --- Componente MarginControl ---
+// Optimizado para manejar entrada de teclado decimal sin conflictos
+const MarginControl = ({ 
+    label, 
+    value, 
+    max, 
+    onChange 
+}: { 
+    label: string; 
+    value: number; 
+    max: number; 
+    onChange: (val: number) => void; 
+}) => {
+    const [localText, setLocalText] = useState(value.toString());
+
+    // Sincronizar texto local cuando el valor externo cambia (ej. reset o slider)
+    useEffect(() => {
+        const parsedLocal = parseFloat(localText);
+        // Solo actualizar si hay una diferencia real para no interrumpir la escritura de decimales (ej. "0.")
+        if (Math.abs(parsedLocal - value) > 0.001 || isNaN(parsedLocal)) {
+             setLocalText(value.toString());
+        }
+    }, [value]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const txt = e.target.value;
+        setLocalText(txt); // Permitir escribir libremente
+        
+        const val = parseFloat(txt);
+        if (!isNaN(val)) {
+            // Clampear solo para la actualización efectiva, no visual inmediata
+            let effective = val;
+            if (effective > max) effective = max;
+            if (effective < 0) effective = 0;
+            onChange(effective);
+        } else {
+            if (txt === '') onChange(0);
+        }
+    };
+    
+    const handleBlur = () => {
+        let val = parseFloat(localText);
+        if (isNaN(val)) val = 0;
+        if (val > max) val = max;
+        if (val < 0) val = 0;
+        const finalStr = val.toString();
+        setLocalText(finalStr);
+        onChange(val);
+    };
+
+    return (
+        <div className="bg-slate-900/50 p-2 rounded border border-slate-700/50 hover:border-indigo-500/30 transition-colors">
+            <div className="flex justify-between items-center mb-1.5 gap-2">
+                <span className="text-[10px] text-slate-400 font-medium">{label}</span>
+                <div className="relative flex items-center">
+                    <input
+                        type="text"
+                        inputMode="decimal"
+                        value={localText}
+                        onChange={handleInputChange}
+                        onBlur={handleBlur}
+                        className="w-12 text-right bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-[10px] font-mono text-indigo-300 focus:border-indigo-500 outline-none"
+                    />
+                    <span className="text-[9px] text-slate-500 ml-1">"</span>
+                </div>
+            </div>
+            <Tooltip text={`Ajustar margen ${label.toLowerCase()}`} position="top">
+                <input 
+                    type="range" 
+                    min="0" 
+                    max={max} 
+                    step="0.1" 
+                    value={value} 
+                    onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        onChange(val);
+                        setLocalText(val.toString());
+                    }}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                />
+            </Tooltip>
+        </div>
+    );
+};
+
 // --- Componente de Diagnóstico del Sistema ---
 const SystemDiagnostics = ({ settings, onClose }: { settings: AppSettings, onClose: () => void }) => {
     const [results, setResults] = useState<any[]>([]);
@@ -678,7 +763,7 @@ export default function App() {
                 </div>
                 SopaCreator
             </h1>
-            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.5</p>
+            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.6</p>
           </div>
           <div className="flex gap-2">
              <Tooltip text="Abrir la biblioteca de puzzles guardados" position="bottom">
@@ -1034,45 +1119,18 @@ export default function App() {
                     
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            { key: 'top', label: 'Superior', max: 3 },
-                            { key: 'bottom', label: 'Inferior', max: 3 },
-                            { key: 'left', label: 'Izquierdo', max: 2 },
-                            { key: 'right', label: 'Derecho', max: 2 },
+                            { id: 'top', label: 'Superior', max: 3 },
+                            { id: 'bottom', label: 'Inferior', max: 3 },
+                            { id: 'left', label: 'Izquierdo', max: 2 },
+                            { id: 'right', label: 'Derecho', max: 2 },
                         ].map((m) => (
-                            <div key={m.key} className="bg-slate-900/50 p-2 rounded border border-slate-700/50 hover:border-indigo-500/30 transition-colors">
-                                <div className="flex justify-between items-center mb-1.5 gap-2">
-                                    <span className="text-[10px] text-slate-400 font-medium">{m.label}</span>
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max={m.max}
-                                            step="0.1"
-                                            value={margins[m.key as keyof PuzzleMargins]}
-                                            onChange={(e) => {
-                                                let val = parseFloat(e.target.value);
-                                                if (isNaN(val)) val = 0;
-                                                if (val > m.max) val = m.max;
-                                                if (val < 0) val = 0;
-                                                setMargins({...margins, [m.key]: val});
-                                            }}
-                                            className="w-12 text-right bg-slate-950 border border-slate-700 rounded px-1 py-0.5 text-[10px] font-mono text-indigo-300 focus:border-indigo-500 outline-none appearance-none"
-                                        />
-                                        <span className="text-[9px] text-slate-500 ml-1">"</span>
-                                    </div>
-                                </div>
-                                <Tooltip text={`Ajustar margen ${m.label.toLowerCase()}`} position="top">
-                                    <input 
-                                        type="range" 
-                                        min="0" 
-                                        max={m.max} 
-                                        step="0.1" 
-                                        value={margins[m.key as keyof PuzzleMargins]} 
-                                        onChange={(e) => setMargins({...margins, [m.key]: parseFloat(e.target.value)})}
-                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                                    />
-                                </Tooltip>
-                            </div>
+                            <MarginControl
+                                key={m.id}
+                                label={m.label}
+                                max={m.max}
+                                value={margins[m.id as keyof PuzzleMargins]}
+                                onChange={(val) => setMargins({ ...margins, [m.id]: val })}
+                            />
                         ))}
                     </div>
                 </div>
