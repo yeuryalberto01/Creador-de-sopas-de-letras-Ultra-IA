@@ -106,3 +106,12 @@ export interface SavedPuzzleRecord {
   config: PuzzleConfig;
   puzzleData: GeneratedPuzzle;
 }
+
+// --- Book / Collection Logic ---
+export interface BookStack {
+  id: string;
+  name: string;
+  targetCount: number; // Target number of pages (e.g. 40)
+  createdAt: number;
+  puzzles: SavedPuzzleRecord[];
+}
