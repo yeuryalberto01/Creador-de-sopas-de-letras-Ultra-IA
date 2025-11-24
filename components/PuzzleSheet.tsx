@@ -35,7 +35,6 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
 
   // Define styles based on mode
   const isColor = styleMode === 'color' && themeData;
-  // Fix: Cast isColor to boolean because it might contain the PuzzleTheme object
   const fontFamily = getFontFamily(fontType, !!isColor);
   
   const containerStyle = isColor ? { backgroundColor: themeData.backgroundColor } : { backgroundColor: 'white' };
@@ -48,14 +47,33 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     borderBottomColor: 'black' 
   };
 
+  // --- LOGICA DE ESCALADO PROPORCIONAL ---
+  // El objetivo es que una grilla de 10x10 se vea pequeña y elegante,
+  // y una de 20x20 ocupe todo el ancho disponible.
+  const TARGET_CELL_SIZE_INCH = 0.42; // Tamaño ideal de celda
+  const MAX_WIDTH_INCH = 6.5; // Ancho máximo imprimible (márgenes seguros)
+  const MIN_WIDTH_INCH = 3.5; // Ancho mínimo estético
+
+  // 1. Calcular ancho teórico
+  let calculatedWidth = gridSize * TARGET_CELL_SIZE_INCH;
+
+  // 2. Aplicar límites (Clamping)
+  // Si supera el máximo, se ajusta al máximo (las celdas se encogen)
+  // Si es menor al mínimo, se ajusta al mínimo (las celdas crecen)
+  if (calculatedWidth > MAX_WIDTH_INCH) calculatedWidth = MAX_WIDTH_INCH;
+  if (calculatedWidth < MIN_WIDTH_INCH) calculatedWidth = MIN_WIDTH_INCH;
+
+  // 3. Calcular tamaño real de celda y fuente
+  const realCellSizeInch = calculatedWidth / gridSize;
+  const fontSizeInch = realCellSizeInch * 0.65; // La letra ocupa ~65% de la celda
+
   const gridContainerStyle: React.CSSProperties = {
     display: 'grid',
     gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
     gridTemplateRows: `repeat(${gridSize}, 1fr)`,
-    width: '100%',
-    maxWidth: '6.5in', // Max width constraint for paper
-    aspectRatio: '1/1', // FORCE SQUARE
-    margin: '0 auto',
+    width: `${calculatedWidth}in`, 
+    height: `${calculatedWidth}in`, // Mantener aspecto cuadrado
+    margin: '0 auto', // Centrado horizontal dentro del flex container
     backgroundColor: config.maskShape === 'SQUARE' 
         ? (isColor ? themeData.secondaryColor : 'white') 
         : 'transparent',
@@ -72,7 +90,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
     fontFamily: fontFamily,
     opacity: isValid ? 1 : 0, // Hide invalid cells
-    borderRadius: config.maskShape !== 'SQUARE' ? '20%' : '0' // Rounded cells for shapes looks nicer
+    borderRadius: config.maskShape !== 'SQUARE' ? '20%' : '0'
   });
 
   return (
@@ -107,7 +125,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       {/* Grid Container */}
       <div className="flex-grow flex items-center justify-center w-full mb-6 relative">
         <div 
-          className={`transition-colors duration-300 ${config.maskShape === 'SQUARE' ? 'border-2 rounded-sm' : ''}`}
+          className={`transition-all duration-300 ${config.maskShape === 'SQUARE' ? 'border-2 rounded-sm' : ''}`}
           style={gridContainerStyle}
         >
           {grid.map((row, y) => (
@@ -123,7 +141,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
                     ${showSolution && !cell.isWord ? 'opacity-30' : ''}
                   `}
                   style={{
-                      fontSize: `clamp(10px, ${60 / gridSize}vmin, 24px)`, // Dynamic font sizing
+                      fontSize: `${fontSizeInch}in`,
                       ...cellStyle(isSolutionCell, cell.isValid)
                   }}
                 >

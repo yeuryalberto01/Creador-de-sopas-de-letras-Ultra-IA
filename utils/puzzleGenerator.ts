@@ -27,24 +27,32 @@ class SeededRNG {
 
 // Directions map
 const DIRECTIONS = {
-  E: [1, 0],
-  S: [0, 1],
-  SE: [1, 1],
-  NE: [1, -1],
-  W: [-1, 0],
-  N: [0, -1],
-  NW: [-1, -1],
-  SW: [-1, 1]
+  E: [1, 0],   // Right
+  S: [0, 1],   // Down
+  SE: [1, 1],  // Diagonal Down-Right
+  NE: [1, -1], // Diagonal Up-Right
+  W: [-1, 0],  // Left (Reverse)
+  N: [0, -1],  // Up (Reverse)
+  NW: [-1, -1],// Diagonal Up-Left (Reverse)
+  SW: [-1, 1]  // Diagonal Down-Left (Reverse)
 };
 
 const getAllowedDirections = (difficulty: Difficulty) => {
   switch (difficulty) {
     case Difficulty.EASY:
+      // STANDARD: Kids/Beginner. only Left-to-Right and Top-to-Bottom.
+      // No diagonals, no backwards.
       return [DIRECTIONS.E, DIRECTIONS.S];
+      
     case Difficulty.MEDIUM:
+      // STANDARD: Standard puzzles. Forward reading directions + Diagonals.
+      // Usually no backwards text to keep it flowy but challenging.
       return [DIRECTIONS.E, DIRECTIONS.S, DIRECTIONS.SE, DIRECTIONS.NE];
+      
     case Difficulty.HARD:
+      // STANDARD: Expert. Chaos mode. All 8 directions allowed.
       return Object.values(DIRECTIONS);
+      
     default:
       return [DIRECTIONS.E, DIRECTIONS.S];
   }
@@ -82,14 +90,9 @@ const isInsideShape = (x: number, y: number, size: number, shape: ShapeType): bo
     }
 
     if (shape === 'STAR') {
-        // Simple 5-point star check using polar coordinates or polygon
-        // Using a simple distance metric from star arms is easier for grid
-        // This is a rough approximation
+        // Simple 5-point star check using distance logic
         const r = Math.sqrt(nx*nx + ny*ny);
         const theta = Math.atan2(ny, nx);
-        // Star boundary in polar: r(theta) = R / (cos(mod(theta, 2pi/5) - pi/5) / cos(pi/5))? No too complex
-        // Let's use two overlapping triangles logic or just a distance modulation
-        // r < 0.5 + 0.3 * cos(5 * theta)
         return r < (0.4 + 0.3 * Math.cos(5 * theta + Math.PI/2)); // rotated
     }
 
@@ -106,19 +109,27 @@ export const calculateSmartGridSize = (words: string[], difficulty: Difficulty):
   const longestWord = Math.max(...words.map(w => w.length));
   const totalChars = words.reduce((sum, w) => sum + w.length, 0);
 
-  let areaMultiplier = 3.0; // Default (Medium)
-  if (difficulty === Difficulty.EASY) areaMultiplier = 4.0; 
-  if (difficulty === Difficulty.HARD) areaMultiplier = 2.0;
+  // Density Multiplier: Higher number = More empty space (Easier)
+  // Lower number = Tighter packing (Harder)
+  let areaMultiplier = 3.0; 
+  
+  if (difficulty === Difficulty.EASY) areaMultiplier = 3.5; // Loose, easy to spot
+  if (difficulty === Difficulty.MEDIUM) areaMultiplier = 2.8; // Standard
+  if (difficulty === Difficulty.HARD) areaMultiplier = 1.8; // Tight, chaotic
 
   const minArea = totalChars * areaMultiplier;
   const minDimensionByArea = Math.ceil(Math.sqrt(minArea));
-  const padding = 2; 
-  const minDimensionByLength = longestWord + (difficulty === Difficulty.EASY ? 0 : padding);
+  
+  // Padding ensures word doesn't touch both edges often in Easy mode
+  const padding = difficulty === Difficulty.EASY ? 2 : 0; 
+  const minDimensionByLength = longestWord + padding;
 
   let idealSize = Math.max(minDimensionByLength, minDimensionByArea);
   
-  // Hard constraints
-  idealSize = Math.max(12, Math.min(idealSize, 25));
+  // Hard constraints based on standards
+  if (difficulty === Difficulty.EASY) idealSize = Math.max(10, Math.min(idealSize, 14));
+  if (difficulty === Difficulty.MEDIUM) idealSize = Math.max(14, Math.min(idealSize, 18));
+  if (difficulty === Difficulty.HARD) idealSize = Math.max(18, Math.min(idealSize, 26));
 
   return idealSize;
 };
@@ -156,6 +167,7 @@ export const generatePuzzle = (
   hiddenMessage?: string
 ): GeneratedPuzzle => {
   
+  // 1. Seed Initialization: Ensures reproducibility
   const seed = seedInput || Math.random().toString(36).substring(2, 8).toUpperCase();
   const rng = new SeededRNG(seed);
 
@@ -173,13 +185,17 @@ export const generatePuzzle = (
   const placedWords: PlacedWord[] = [];
   const unplacedWords: string[] = [];
   const directions = getAllowedDirections(difficulty);
+  
+  // Sort words by length (desc) to place hardest ones first
+  // We use localeCompare as secondary sort to ensure deterministic order regardless of input order
   const sortedWords = [...words].sort((a, b) => b.length - a.length || a.localeCompare(b));
 
   // Place Words
   for (const word of sortedWords) {
     let placed = false;
     let attempts = 0;
-    const maxAttempts = 200;
+    // Hard mode gets more attempts to force a fit in a tighter grid
+    const maxAttempts = difficulty === Difficulty.HARD ? 500 : 200;
 
     while (!placed && attempts < maxAttempts) {
       attempts++;
@@ -237,7 +253,8 @@ export const generatePuzzle = (
     }
   }
 
-  // Fill Empty Cells (Hidden Message Logic)
+  // Fill Empty Cells
+  // This must also use the RNG to ensure the filler letters are the same for the same seed
   const cleanMessage = hiddenMessage 
     ? hiddenMessage.toUpperCase().replace(/[^A-ZÑ]/g, '') 
     : '';
@@ -252,7 +269,7 @@ export const generatePuzzle = (
             grid[y][x].letter = cleanMessage[messageIndex];
             messageIndex++;
         } else {
-            // Random filler
+            // Random filler using SeededRNG
             grid[y][x].letter = LETTERS[rng.nextInfo(LETTERS.length)];
         }
       }

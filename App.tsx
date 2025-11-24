@@ -4,7 +4,35 @@ import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from '
 import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
 import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge } from 'lucide-react';
+
+// --- CONSTANTES DE DIFICULTAD ---
+const DIFFICULTY_PRESETS = {
+    [Difficulty.EASY]: {
+        label: "Niños / Fácil",
+        defaultSize: 10,
+        recommendedWords: "8 - 12",
+        description: "Sin diagonales, sin invertidas. Grilla pequeña.",
+        color: "bg-emerald-500",
+        gridRange: [10, 14]
+    },
+    [Difficulty.MEDIUM]: {
+        label: "Estándar / Medio",
+        defaultSize: 15,
+        recommendedWords: "15 - 20",
+        description: "Con diagonales. Sin invertidas. Grilla mediana.",
+        color: "bg-blue-500",
+        gridRange: [14, 18]
+    },
+    [Difficulty.HARD]: {
+        label: "Experto / Difícil",
+        defaultSize: 20,
+        recommendedWords: "25 - 40",
+        description: "¡Caos total! 8 direcciones. Alta densidad.",
+        color: "bg-purple-600",
+        gridRange: [18, 30]
+    }
+};
 
 const INITIAL_WORDS = ['REACT', 'TYPESCRIPT', 'TAILWIND', 'GEMINI', 'DEEPSEEK', 'GROQ', 'API', 'DATABASE'];
 
@@ -383,6 +411,14 @@ export default function App() {
 
   // --- Logic ---
 
+  const handleDifficultyChange = (newDifficulty: Difficulty) => {
+      setDifficulty(newDifficulty);
+      if (isSmartGrid) {
+          const preset = DIFFICULTY_PRESETS[newDifficulty];
+          setGridSize(preset.defaultSize);
+      }
+  };
+
   const handleGeneratePuzzle = useCallback((forceSeed?: string, forceWords?: string[], forceTheme?: PuzzleTheme) => {
     const seedToUse = forceSeed || (seedInput.trim() !== '' ? seedInput : undefined);
     const wordsToUse = forceWords || wordList;
@@ -390,9 +426,22 @@ export default function App() {
     // 1. Calculate Size
     let sizeToUse = gridSize;
     if (isSmartGrid) {
-        // If shape is not square, we usually need more space to fit same words
+        // We use the difficulty preset logic here usually, but also respect words
+        // If words fit in default size, use default. If not, auto-expand.
+        // We use the stricter of: calculated size OR difficulty default.
+        const calculated = calculateSmartGridSize(wordsToUse, difficulty);
+        const presetSize = DIFFICULTY_PRESETS[difficulty].defaultSize;
+        
+        // Shape multiplier
         let shapeMultiplier = maskShape === 'SQUARE' ? 1.0 : 1.3;
-        sizeToUse = Math.ceil(calculateSmartGridSize(wordsToUse, difficulty) * shapeMultiplier);
+        
+        // If word list is huge, we must expand beyond preset
+        sizeToUse = Math.max(presetSize, Math.ceil(calculated * shapeMultiplier));
+        
+        // Ensure we stick to reasonable limits per difficulty
+        const [min, max] = DIFFICULTY_PRESETS[difficulty].gridRange;
+        sizeToUse = Math.max(min, Math.min(sizeToUse, max));
+        
         setGridSize(sizeToUse);
     }
 
@@ -424,7 +473,11 @@ export default function App() {
     setIsGeneratingAI(true);
 
     try {
-        const newWords = await generateWordListAI(settings.logicAI, topic, 15, difficulty);
+        // Extract count based on difficulty recommended
+        const range = DIFFICULTY_PRESETS[difficulty].recommendedWords.split('-').map(Number);
+        const count = Math.ceil((range[0] + range[1]) / 2); // Average
+
+        const newWords = await generateWordListAI(settings.logicAI, topic, count, difficulty);
         
         let newTheme: PuzzleTheme | null = null;
         if (styleMode === 'color') {
@@ -556,7 +609,7 @@ export default function App() {
                 </div>
                 SopaCreator
             </h1>
-            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v3.5</p>
+            <p className="text-slate-500 text-[10px] mt-1 tracking-wider uppercase font-medium ml-1">Generador Profesional v4.0</p>
           </div>
           <div className="flex gap-2">
              <Tooltip text="Biblioteca Guardada" position="bottom">
@@ -578,11 +631,50 @@ export default function App() {
         {/* Scrollable Controls */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
             
-            {/* SECTION 1: CONTENT (Words & AI) */}
+            {/* SECTION 1: DIFFICULTY (The Master Control) */}
+            <div className="space-y-3">
+                <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
+                    <Gauge className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-widest">1. Nivel de Dificultad</span>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-2">
+                     {Object.values(Difficulty).map((d) => {
+                         const preset = DIFFICULTY_PRESETS[d];
+                         const isSelected = difficulty === d;
+                         return (
+                            <button
+                                key={d}
+                                onClick={() => handleDifficultyChange(d)}
+                                className={`text-left p-3 rounded-lg border transition-all relative overflow-hidden group ${
+                                isSelected 
+                                    ? `bg-slate-800 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]` 
+                                    : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800 hover:border-slate-500'
+                                }`}
+                            >
+                                <div className={`absolute top-0 left-0 w-1 h-full ${preset.color} transition-opacity ${isSelected ? 'opacity-100' : 'opacity-40 group-hover:opacity-80'}`} />
+                                <div className="ml-3">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>{preset.label}</span>
+                                        {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 leading-tight">{preset.description}</p>
+                                    <div className="mt-2 flex gap-2 text-[9px] font-mono text-slate-400">
+                                        <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Grilla ~{preset.defaultSize}x{preset.defaultSize}</span>
+                                        <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">Palabras: {preset.recommendedWords}</span>
+                                    </div>
+                                </div>
+                            </button>
+                         );
+                     })}
+                </div>
+            </div>
+
+            {/* SECTION 2: CONTENT (Words & AI) */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
                     <List className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-widest">1. Contenido</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">2. Contenido</span>
                 </div>
 
                 {/* AI Input */}
@@ -616,9 +708,18 @@ export default function App() {
 
                 {/* Word Management */}
                 <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
-                     <label className="text-[10px] uppercase text-slate-500 font-bold mb-2 block">
-                        Palabras ({wordList.length})
-                    </label>
+                     <div className="flex justify-between items-center mb-2">
+                         <label className="text-[10px] uppercase text-slate-500 font-bold block">
+                            Palabras ({wordList.length})
+                        </label>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                            wordList.length > parseInt(DIFFICULTY_PRESETS[difficulty].recommendedWords.split('-')[1]) 
+                            ? 'bg-amber-900/50 text-amber-200' 
+                            : 'bg-slate-900 text-slate-400'
+                        }`}>
+                            Rec: {DIFFICULTY_PRESETS[difficulty].recommendedWords}
+                        </span>
+                     </div>
                     <form onSubmit={handleAddWord} className="relative mb-3">
                         <input
                             type="text"
@@ -646,11 +747,11 @@ export default function App() {
                 </div>
             </div>
 
-            {/* SECTION 2: GRID CONFIG (Programmable) */}
+            {/* SECTION 3: GRID CONFIG (Fine Tuning) */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
                     <MonitorPlay className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-widest">2. Grilla Programable</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">3. Ajustes de Grilla</span>
                 </div>
 
                 <div className="bg-slate-800 p-1 rounded-lg flex mb-4">
@@ -658,7 +759,7 @@ export default function App() {
                         onClick={() => setIsSmartGrid(true)}
                         className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${isSmartGrid ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
                     >
-                        Auto (IA)
+                        Auto (Según Nivel)
                     </button>
                     <button 
                          onClick={() => setIsSmartGrid(false)}
@@ -669,60 +770,54 @@ export default function App() {
                 </div>
 
                 {isSmartGrid ? (
-                    <div className="p-4 bg-indigo-900/20 border border-indigo-500/30 rounded-lg text-center">
+                    <div className="p-4 bg-indigo-900/20 border border-indigo-500/30 rounded-lg text-center mt-2">
                         <BrainCircuit className="w-8 h-8 text-indigo-400 mx-auto mb-2 opacity-50" />
                         <p className="text-xs text-indigo-200">
-                            La IA calculará el tamaño óptimo ({calculateSmartGridSize(wordList, difficulty)}x{calculateSmartGridSize(wordList, difficulty)}) para asegurar que todas las palabras encajen perfectamente.
+                            La IA ajusta el tamaño basado en el nivel <strong>{difficulty}</strong> y la longitud de tus palabras.
                         </p>
                     </div>
                 ) : (
-                    <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg space-y-4">
+                    <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg space-y-4 mt-2">
                         <div className="flex justify-between items-end">
-                            <label className="text-[10px] uppercase text-slate-400 font-bold">Tamaño</label>
+                            <label className="text-[10px] uppercase text-slate-400 font-bold">Tamaño Personalizado</label>
                             <span className="text-sm font-mono text-indigo-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
                                 {gridSize} x {gridSize}
                             </span>
                         </div>
                         <input 
                             type="range" 
-                            min="10" 
+                            min="8" 
                             max="30" 
                             value={gridSize} 
                             onChange={(e) => setGridSize(Number(e.target.value))}
                             className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                         />
-                        <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                            <span>10 (Pequeño)</span>
-                            <span>30 (Enorme)</span>
-                        </div>
                     </div>
                 )}
 
-                <div className="space-y-2 pt-2">
-                    <label className="text-[10px] uppercase text-slate-500 font-bold block">Dificultad (Direcciones)</label>
-                    <div className="grid grid-cols-3 gap-2">
-                         {Object.values(Difficulty).map((d) => (
-                            <button
-                                key={d}
-                                onClick={() => setDifficulty(d)}
-                                className={`py-2 text-[10px] font-bold uppercase rounded-lg border transition-all ${
-                                difficulty === d 
-                                    ? 'bg-slate-200 text-slate-900 border-slate-200' 
-                                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                                }`}
-                            >
-                                {d}
-                            </button>
-                         ))}
+                {/* Seed / ID Control */}
+                 <div className="flex gap-2 items-end pt-2 border-t border-slate-800/50">
+                    <div className="flex-1">
+                         <label className="text-[10px] uppercase text-slate-500 font-bold block mb-1">Semilla / ID (Opcional)</label>
+                         <div className="relative">
+                            <Fingerprint className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                            <input 
+                                type="text"
+                                value={seedInput}
+                                onChange={(e) => setSeedInput(e.target.value.toUpperCase())}
+                                placeholder="Aleatorio (Vacío)"
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-2 py-1.5 text-xs text-indigo-300 font-mono focus:border-indigo-500 outline-none placeholder-slate-600 uppercase"
+                            />
+                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* SECTION 3: DESIGN */}
+            {/* SECTION 4: DESIGN */}
             <div className="space-y-3">
                 <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
                     <Paintbrush className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-widest">3. Diseño</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">4. Diseño</span>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
@@ -774,28 +869,51 @@ export default function App() {
                 </div>
             </div>
             
-             {/* SECTION 4: META DETAILS */}
+             {/* SECTION 5: META DETAILS */}
             <div className="space-y-3">
                  <div className="flex items-center gap-2 text-indigo-400 border-b border-slate-800 pb-2">
                     <Type className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-widest">4. Textos</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">5. Textos</span>
                 </div>
                 
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none" placeholder="Título Principal" />
+                <div className="space-y-1">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Título Principal</label>
+                    <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none" placeholder="Sopa de Letras" />
+                </div>
                 
                 <div className="flex gap-2">
-                    <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-1/2 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 outline-none" placeholder="Subtítulo Izq" />
-                    <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-1/2 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-300 outline-none" placeholder="Subtítulo Der" />
+                    <div className="w-1/2 space-y-1">
+                        <label className="text-[10px] uppercase text-slate-500 font-bold">Subtítulo Izq</label>
+                        <input type="text" value={headerLeft} onChange={(e) => setHeaderLeft(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                    </div>
+                    <div className="w-1/2 space-y-1">
+                        <label className="text-[10px] uppercase text-slate-500 font-bold">Subtítulo Der</label>
+                        <input type="text" value={headerRight} onChange={(e) => setHeaderRight(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none" />
+                    </div>
                 </div>
 
-                <div className="relative">
-                     <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                     <input 
+                <div className="space-y-1">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold flex items-center gap-1">Mensaje Oculto <span className="text-slate-600 text-[9px]">(letras sobrantes)</span></label>
+                    <div className="relative">
+                        <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+                        <input 
+                            type="text" 
+                            value={hiddenMessage}
+                            onChange={(e) => setHiddenMessage(e.target.value)}
+                            placeholder="Ej. FELICIDADES"
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 pl-8 py-2 text-xs text-indigo-300 placeholder-slate-600 outline-none focus:border-indigo-500"
+                        />
+                    </div>
+                </div>
+
+                <div className="space-y-1 pt-1 border-t border-slate-800/50 mt-2">
+                    <label className="text-[10px] uppercase text-slate-500 font-bold">Texto Pie de Página</label>
+                    <input 
                         type="text" 
-                        value={hiddenMessage}
-                        onChange={(e) => setHiddenMessage(e.target.value)}
-                        placeholder="Mensaje oculto (letras sobrantes)..."
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 pl-8 py-2 text-xs text-indigo-300 placeholder-slate-600 outline-none focus:border-indigo-500"
+                        value={footerText}
+                        onChange={(e) => setFooterText(e.target.value)}
+                        placeholder="Generado con..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-slate-400 focus:text-white focus:border-indigo-500 outline-none transition-colors"
                     />
                 </div>
             </div>
@@ -836,7 +954,7 @@ export default function App() {
       </aside>
 
       {/* --- MAIN: Preview Area --- */}
-      <main className="flex-1 bg-gray-200/50 relative overflow-hidden flex flex-col items-center justify-center p-8 print:bg-white print:p-0 print:m-0 print:w-full print:h-full print:absolute print:top-0 print:left-0 print:z-50 print:overflow-visible">
+      <main className="flex-1 bg-gray-200/50 relative overflow-auto flex flex-col items-center p-8 print:bg-white print:p-0 print:m-0 print:w-full print:h-full print:absolute print:top-0 print:left-0 print:z-50 print:overflow-visible">
         
         {/* Toolbar Floating */}
         <div className="absolute top-6 flex gap-4 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 z-10 no-print print:hidden">
@@ -854,7 +972,7 @@ export default function App() {
         </div>
 
         {/* Paper Simulation */}
-        <div className="relative shadow-2xl print:shadow-none transition-transform duration-300 origin-center scale-[0.65] sm:scale-[0.75] md:scale-[0.85] lg:scale-[0.9] xl:scale-100 print:scale-100 print:transform-none print:m-0 print:p-0">
+        <div className="relative shadow-2xl print:shadow-none transition-transform duration-300 origin-center scale-[0.65] sm:scale-[0.75] md:scale-[0.85] lg:scale-[0.9] xl:scale-100 print:scale-100 print:transform-none print:m-0 print:p-0 my-auto">
            <PuzzleSheet 
              puzzle={generatedPuzzle}
              config={{
