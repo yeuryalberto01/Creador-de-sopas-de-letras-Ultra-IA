@@ -1,4 +1,5 @@
 
+
 export enum Difficulty {
   EASY = 'Fácil',
   MEDIUM = 'Intermedio',
@@ -24,7 +25,6 @@ export interface PlacedWord {
   startY: number;
   endX: number;
   endY: number;
-  color?: string; // For solution highlighting
 }
 
 export interface PuzzleTheme {
@@ -73,6 +73,8 @@ export interface PuzzleConfig {
   backgroundId?: string; // Reference to ArtTemplate
   backgroundImage?: string; // Base64 Data
   backgroundStyle?: 'bw' | 'color';
+  overlayOpacity?: number; // 0.0 to 1.0 - Controls opacity of the white box behind grid
+  textOverlayOpacity?: number; // 0.0 to 1.0 - Controls opacity of headers/wordlist boxes
 }
 
 export interface GeneratedPuzzle {

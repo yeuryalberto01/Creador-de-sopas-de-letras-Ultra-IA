@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISettings, PuzzleTheme } from "../types";
 
@@ -272,7 +271,7 @@ export const generateThemeAI = async (settings: AISettings, topic: string): Prom
 
 /**
  * Generates a background image using Gemini 2.5 Flash Image.
- * Supports Black & White (Line Art) or Color (Watermark).
+ * Supports Black & White (Line Art) or Color (Vector Frame).
  */
 export const generatePuzzleBackground = async (settings: AISettings, prompt: string, style: 'bw' | 'color'): Promise<string> => {
     // Requires a Google API Key, can't use generic OpenAI endpoints easily for image gen with this specific setup
@@ -281,23 +280,41 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
 
     const ai = new GoogleGenAI({ apiKey });
     
-    // Construct Prompt based on Style
+    // Construct Prompt based on Style - Optimized for Text Overlay with strong Negative Space focus
     let finalPrompt = "";
+    
     if (style === 'bw') {
         finalPrompt = `
-            High quality page border for a puzzle book about: ${prompt}.
-            Style: Black and white line art, coloring book style, clean heavy lines.
-            Layout: A decorative frame border. The center MUST be empty white space.
-            Constraint: Do not include text, letters, or words.
-            Aspect Ratio: Vertical 3:4.
+            Design a professional coloring book style PAGE BORDER / FRAME about: ${prompt}.
+            
+            CRITICAL LAYOUT RULES:
+            1. The art must be ONLY around the edges (top, bottom, sides) acting as a frame.
+            2. The CENTER (80% of the page area) must be COMPLETELY EMPTY WHITE SPACE.
+            3. Do not place any objects, lines, or textures in the center. It must be blank for text.
+            
+            Style Rules:
+            1. Black and white vector line art ONLY.
+            2. Crisp lines, high contrast.
+            3. No grayscale shading, no gradients.
+            4. Intricate details on edges only.
+            5. Aspect Ratio: Vertical Portrait (3:4).
         `;
     } else {
+        // Updated to be structural like BW but in color (Vector/Illustration style)
         finalPrompt = `
-            High quality artistic background wallpaper about: ${prompt}.
-            Style: Watercolor texture, faded pastel colors, very low contrast, watermark style.
-            Layout: Full page pattern but very light and faded in the middle.
-            Constraint: Do not include text, letters, or words.
-            Aspect Ratio: Vertical 3:4.
+            Design a professional decorative VECTOR FRAME / BORDER about: ${prompt}.
+            
+            CRITICAL LAYOUT RULES:
+            1. The illustration must be restricted to the edges to form a frame.
+            2. The CENTER must be pure EMPTY WHITE SPACE (Negative Space).
+            3. This is for a document background, so the middle must be clean.
+            
+            Style Rules:
+            1. Style: Clean Flat Vector Art / Sticker Art / Clip Art.
+            2. Use flat, vibrant colors.
+            3. White background.
+            4. DO NOT use watercolor, complex paintings, or photographic styles that fill the page.
+            5. Aspect Ratio: Vertical Portrait (3:4).
         `;
     }
 

@@ -1,12 +1,11 @@
 
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateWordListAI, generateThemeAI, generatePuzzleBackground, PROVIDER_PRESETS, testApiConnection } from './services/aiService';
 import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
-import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary, saveArtTemplate, getArtLibrary, deleteArtTemplate, getBookStacks, createBookStack, addPuzzleToStack, deleteBookStack, removePuzzleFromStack } from './services/storageService';
+import { loadSettings, saveSettings, savePuzzleToLibrary, getLibrary, deletePuzzleFromLibrary, saveArtTemplate, getArtLibrary, deleteArtTemplate, getBookStacks, createBookStack, addPuzzleToStack, deleteBookStack, removePuzzleFromStack, resetLibrary } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
 import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate, PuzzleMargins, BookStack } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw, Book, Plus, FileJson, Library, ChevronDown, ChevronUp } from 'lucide-react';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw, Book, Plus, FileJson, Library, ChevronDown, ChevronUp, Layers, Eye } from 'lucide-react';
 
 // --- CONSTANTES DE DIFICULTAD ---
 const DIFFICULTY_PRESETS = {
@@ -160,7 +159,6 @@ const MarginControl = ({
 
 // --- Componente de Diagnóstico del Sistema ---
 const SystemDiagnostics = ({ settings, onClose }: { settings: AppSettings, onClose: () => void }) => {
-    // ... (SystemDiagnostics code remains same, omitted for brevity but assumed present)
     const [results, setResults] = useState<any[]>([]);
     const [isRunning, setIsRunning] = useState(false);
     const [overallStatus, setOverallStatus] = useState<'pending' | 'success' | 'warning' | 'error'>('pending');
@@ -279,7 +277,6 @@ const ProviderSettingsForm = ({
     settings: AISettings; 
     onUpdate: (s: AISettings) => void; 
 }) => {
-    // ... (ProviderSettingsForm code remains same, omitted for brevity but assumed present)
     const [selectedPreset, setSelectedPreset] = useState<string>('gemini');
     const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [testMessage, setTestMessage] = useState('');
@@ -436,6 +433,9 @@ export default function App() {
   // --- Art Features ---
   const [backgroundImage, setBackgroundImage] = useState<string | undefined>(undefined);
   const [backgroundStyle, setBackgroundStyle] = useState<'bw' | 'color'>('bw');
+  const [overlayOpacity, setOverlayOpacity] = useState(0.85); 
+  const [textOverlayOpacity, setTextOverlayOpacity] = useState(0.9);
+  
   const [isArtActive, setIsArtActive] = useState(false);
   const [artPrompt, setArtPrompt] = useState('');
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
@@ -448,15 +448,24 @@ export default function App() {
   const [seedInput, setSeedInput] = useState('');
   const [currentSeed, setCurrentSeed] = useState('');
   const [generatedPuzzle, setGeneratedPuzzle] = useState<GeneratedPuzzle | null>(null);
+  const [renderKey, setRenderKey] = useState(0); // Forces re-render on load
 
   // --- Save Logic State ---
   const [saveOption, setSaveOption] = useState<'single' | 'existing_book' | 'new_book'>('single');
+  const [saveName, setSaveName] = useState('');
   const [selectedBookId, setSelectedBookId] = useState<string>('');
   const [newBookName, setNewBookName] = useState('');
   const [newBookTarget, setNewBookTarget] = useState(40);
   const [activeLibraryTab, setActiveLibraryTab] = useState<'puzzles' | 'books'>('puzzles');
 
   // --- Logic ---
+
+  // Sync title to saveName when opening save modal
+  useEffect(() => {
+      if (showSaveModal) {
+          setSaveName(title);
+      }
+  }, [showSaveModal, title]);
 
   const handleDifficultyChange = (newDifficulty: Difficulty) => {
       setDifficulty(newDifficulty);
@@ -541,6 +550,10 @@ export default function App() {
         const bgBase64 = await generatePuzzleBackground(settings.designAI, artPrompt, backgroundStyle);
         setBackgroundImage(bgBase64);
         setIsArtActive(true);
+        // Default opacity settings for new art
+        setOverlayOpacity(0.85); 
+        setTextOverlayOpacity(0.9);
+        
         const newTemplate: ArtTemplate = {
             id: crypto.randomUUID(),
             name: artPrompt.slice(0, 20),
@@ -566,11 +579,16 @@ export default function App() {
           difficulty, gridSize, gridHeight: gridRows, words: wordList,
           showSolution, styleMode, themeData, maskShape, hiddenMessage,
           fontType, margins, 
-          backgroundImage, backgroundStyle
+          backgroundImage, backgroundStyle, overlayOpacity, textOverlayOpacity
       };
 
       if (saveOption === 'single') {
-          savePuzzleToLibrary(title, config, generatedPuzzle);
+          // VALIDATION: Prevent "Word Search" default or empty names to avoid duplication confusion
+          if (!saveName.trim() || saveName.trim().toLowerCase() === 'sopa de letras') {
+              alert("Por favor, asigna un nombre único a este archivo para identificarlo mejor en la biblioteca.");
+              return;
+          }
+          savePuzzleToLibrary(saveName, config, generatedPuzzle);
       } else if (saveOption === 'existing_book' && selectedBookId) {
           const record = {
               id: crypto.randomUUID(),
@@ -596,6 +614,97 @@ export default function App() {
       setBookStacks(getBookStacks());
       setShowSaveModal(false);
       alert("¡Guardado exitosamente!");
+  };
+
+  const handleLoadPuzzle = (record: SavedPuzzleRecord) => {
+    // 0. Safety Check
+    if (!record) return;
+
+    if (window.confirm("¿Cargar este puzzle reemplazará tu trabajo actual. ¿Continuar?")) {
+        try {
+            const { config, puzzleData } = record;
+            
+            // Validate Logic Data Integrity
+            if (!puzzleData || !puzzleData.grid) {
+                throw new Error("El archivo guardado está dañado o tiene un formato antiguo incompatible.");
+            }
+
+            // 1. Restore Config / Metadatos (with Fallbacks)
+            setTitle(config.title || 'Sopa de Letras');
+            setHeaderLeft(config.headerLeft || '');
+            setHeaderRight(config.headerRight || '');
+            setFooterText(config.footerText || '');
+            setPageNumber(config.pageNumber || '');
+            
+            // 2. Restore Logic State
+            setDifficulty(config.difficulty || Difficulty.MEDIUM);
+            setWordList(Array.isArray(config.words) ? [...config.words] : []);
+            setMaskShape(config.maskShape || 'SQUARE');
+            setHiddenMessage(config.hiddenMessage || '');
+            
+            // 3. Restore Grid Dimensions & Smart Grid Lock
+            // Force Smart Grid OFF first to prevent auto-recalc interference
+            setIsSmartGrid(false); 
+            
+            const loadedSize = config.gridSize || 15;
+            setGridSize(loadedSize);
+            setGridRows(config.gridHeight || loadedSize);
+            
+            // 4. Restore Style & Theme
+            const loadedStyleMode = config.styleMode || 'bw';
+            setStyleMode(loadedStyleMode);
+            
+            if (config.themeData) {
+                setThemeData({ ...config.themeData });
+            } else if (loadedStyleMode === 'bw') {
+                setThemeData(undefined); // Clear theme if loading a BW puzzle
+            }
+
+            setFontType(config.fontType || 'CLASSIC');
+            
+            if (config.margins) {
+                setMargins({ ...config.margins });
+            } else {
+                setMargins({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
+            }
+
+            // 5. Restore Art / Background
+            setBackgroundImage(config.backgroundImage);
+            setBackgroundStyle(config.backgroundStyle || 'bw');
+            setIsArtActive(!!config.backgroundImage);
+            setOverlayOpacity(config.overlayOpacity ?? 0.85);
+            setTextOverlayOpacity(config.textOverlayOpacity ?? 0.9);
+
+            // 6. Restore Core Puzzle Data
+            setSeedInput(puzzleData.seed || '');
+            setCurrentSeed(puzzleData.seed || '');
+            
+            // Force Deep Copy of Grid Row by Row to ensure React State Change and remove reference to stored object
+            setGeneratedPuzzle({
+                ...puzzleData,
+                grid: Array.isArray(puzzleData.grid) ? puzzleData.grid.map((row: any[]) => 
+                    Array.isArray(row) ? row.map((cell: any) => ({...cell})) : []
+                ) : []
+            });
+
+            // Increment Key to force full re-mount of PuzzleSheet component
+            setRenderKey(prev => prev + 1);
+
+            setShowLibraryModal(false);
+        } catch (e: any) {
+            console.error("Error loading puzzle:", e);
+            alert("Error al cargar el archivo (Datos Corruptos): " + e.message);
+        }
+    }
+  };
+
+  const handleResetLibrary = () => {
+      if (confirm("⚠️ ATENCIÓN: Esto borrará TODOS tus puzzles y libros guardados para solucionar los errores. Esta acción no se puede deshacer. ¿Estás seguro?")) {
+          resetLibrary();
+          setLibraryPuzzles([]);
+          setBookStacks([]);
+          alert("Base de datos reseteada correctamente.");
+      }
   };
 
   const handleExportPDF = () => {
@@ -880,7 +989,7 @@ export default function App() {
                                 type="text"
                                 value={artPrompt}
                                 onChange={(e) => setArtPrompt(e.target.value)}
-                                placeholder="Describe el fondo (ej: Espacio, Selva)..."
+                                placeholder="Describe el fondo (ej: Espacio)..."
                                 className="flex-1 bg-slate-900 border border-slate-700 rounded-l-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
                                 onKeyDown={(e) => e.key === 'Enter' && handleGenerateArt()}
                             />
@@ -896,15 +1005,51 @@ export default function App() {
                                 {isGeneratingArt ? <Loader2 className="w-4 h-4 animate-spin"/> : <Image className="w-4 h-4"/>}
                              </button>
                         </div>
+                        
+                        {/* New: Design Controls when Image Active */}
                         {backgroundImage && (
-                             <div className="relative group w-full h-16 bg-slate-900 rounded-lg overflow-hidden border border-slate-600">
-                                <img src={backgroundImage} className="w-full h-full object-cover opacity-70" alt="bg" />
-                                <button 
-                                    onClick={() => setBackgroundImage(undefined)}
-                                    className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-all font-xs font-bold uppercase tracking-wider"
-                                >
-                                    <Eraser className="w-4 h-4 mr-1" /> Quitar Fondo
-                                </button>
+                             <div className="space-y-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700 mt-2">
+                                <div className="relative group w-full h-16 bg-slate-900 rounded-lg overflow-hidden border border-slate-600">
+                                    <img src={backgroundImage} className="w-full h-full object-cover opacity-70" alt="bg" />
+                                    <button 
+                                        onClick={() => setBackgroundImage(undefined)}
+                                        className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-all font-xs font-bold uppercase tracking-wider"
+                                    >
+                                        <Eraser className="w-4 h-4 mr-1" /> Quitar Fondo
+                                    </button>
+                                </div>
+                                
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[10px] text-slate-400">
+                                        <span className="flex items-center gap-1"><Layers className="w-3 h-3"/> Opacidad Grilla</span>
+                                        <span>{Math.round(overlayOpacity * 100)}%</span>
+                                    </div>
+                                    <input 
+                                        type="range" 
+                                        min="0" max="1" step="0.05"
+                                        value={overlayOpacity}
+                                        onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                    />
+                                </div>
+
+                                <div className="space-y-1 border-t border-slate-700 pt-2">
+                                    <div className="flex justify-between text-[10px] text-slate-400">
+                                        <span className="flex items-center gap-1"><Type className="w-3 h-3"/> Opacidad Textos</span>
+                                        <span>{Math.round(textOverlayOpacity * 100)}%</span>
+                                    </div>
+                                    <input 
+                                        type="range" 
+                                        min="0" max="1" step="0.05"
+                                        value={textOverlayOpacity}
+                                        onChange={(e) => setTextOverlayOpacity(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                    />
+                                    <div className="flex justify-between text-[8px] text-slate-500 px-0.5">
+                                        <span>Transparente</span>
+                                        <span>Sólido</span>
+                                    </div>
+                                </div>
                              </div>
                         )}
                     </div>
@@ -1030,13 +1175,14 @@ export default function App() {
              {/* Paper Container */}
              <div className="relative scale-[0.85] xl:scale-100 transition-transform duration-500 shadow-2xl origin-top">
                  <PuzzleSheet 
+                    key={renderKey} // Force Re-Render when puzzle loaded
                     puzzle={generatedPuzzle} 
                     config={{
                         title, headerLeft, headerRight, footerText, pageNumber,
                         difficulty, gridSize, gridHeight: gridRows, words: wordList,
                         showSolution, styleMode, themeData, maskShape, hiddenMessage,
                         fontType, margins,
-                        backgroundImage, backgroundStyle
+                        backgroundImage, backgroundStyle, overlayOpacity, textOverlayOpacity
                     }} 
                 />
              </div>
@@ -1084,375 +1230,303 @@ export default function App() {
         </div>
       )}
 
-      {/* Save Options Modal (New) */}
+      {/* Save Options Modal */}
       {showSaveModal && (
           <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-slate-900 text-white w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
                   <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                      <h2 className="text-lg font-bold flex items-center gap-2">
-                          <Save className="w-5 h-5 text-indigo-400"/> Guardar Proyecto
-                      </h2>
-                      <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white"/></button>
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                        <Save className="w-5 h-5 text-emerald-400"/> Guardar Proyecto
+                    </h2>
+                    <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white"/></button>
                   </div>
                   
                   <div className="p-6 space-y-4">
-                      
-                      {/* Option 1: Single */}
-                      <div 
-                        onClick={() => setSaveOption('single')}
-                        className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center gap-3 ${saveOption === 'single' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}
-                      >
-                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${saveOption === 'single' ? 'border-indigo-400 bg-indigo-400' : 'border-slate-500'}`}>
-                              {saveOption === 'single' && <Check className="w-3 h-3 text-slate-900" />}
-                          </div>
-                          <div>
-                              <div className="font-bold text-sm">Puzzle Individual</div>
-                              <div className="text-[10px] text-slate-400">Guardar como hoja suelta en la biblioteca.</div>
-                          </div>
-                      </div>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                <input 
+                                    type="radio" 
+                                    name="saveOption" 
+                                    checked={saveOption === 'single'} 
+                                    onChange={() => setSaveOption('single')}
+                                    className="accent-indigo-500"
+                                />
+                                <div className="flex-1">
+                                    <div className="font-bold text-sm">Guardar Individual</div>
+                                    <div className="text-[10px] text-slate-400">Guarda como puzzle suelto en la biblioteca.</div>
+                                </div>
+                            </label>
 
-                      {/* Option 2: Add to Book */}
-                      <div 
-                        onClick={() => setSaveOption('existing_book')}
-                        className={`p-3 rounded-lg border cursor-pointer transition-all flex flex-col gap-2 ${saveOption === 'existing_book' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}
-                      >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${saveOption === 'existing_book' ? 'border-indigo-400 bg-indigo-400' : 'border-slate-500'}`}>
-                                {saveOption === 'existing_book' && <Check className="w-3 h-3 text-slate-900" />}
-                            </div>
-                            <div>
-                                <div className="font-bold text-sm">Añadir a Libro Existente</div>
-                                <div className="text-[10px] text-slate-400">Agregar como página siguiente en una colección.</div>
-                            </div>
-                          </div>
-                          
-                          {saveOption === 'existing_book' && (
-                              <div className="ml-7 mt-1">
-                                  {bookStacks.length > 0 ? (
-                                      <select 
+                            {/* New Input for Single Save Name */}
+                            {saveOption === 'single' && (
+                                <div className="ml-6 mt-2 animate-in fade-in slide-in-from-top-2">
+                                    <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Nombre del Archivo (En Biblioteca)</label>
+                                    <input 
+                                        type="text" 
+                                        value={saveName}
+                                        onChange={(e) => setSaveName(e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none"
+                                        placeholder="Ej: Biología Unidad 1"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-1">Este nombre identificará tu trabajo guardado.</p>
+                                </div>
+                            )}
+
+                            <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                <input 
+                                    type="radio" 
+                                    name="saveOption" 
+                                    checked={saveOption === 'existing_book'} 
+                                    onChange={() => setSaveOption('existing_book')}
+                                    className="accent-indigo-500"
+                                    disabled={bookStacks.length === 0}
+                                />
+                                <div className={`flex-1 ${bookStacks.length === 0 ? 'opacity-50' : ''}`}>
+                                    <div className="font-bold text-sm">Añadir a Libro Existente</div>
+                                    <div className="text-[10px] text-slate-400">Agrega una página a una colección.</div>
+                                </div>
+                            </label>
+
+                            {saveOption === 'existing_book' && bookStacks.length > 0 && (
+                                <div className="ml-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <select 
                                         value={selectedBookId}
                                         onChange={(e) => setSelectedBookId(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-600 rounded p-2 text-xs text-white outline-none"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                          <option value="">Selecciona un libro...</option>
-                                          {bookStacks.map(b => (
-                                              <option key={b.id} value={b.id}>{b.name} ({b.puzzles.length}/{b.targetCount} págs)</option>
-                                          ))}
-                                      </select>
-                                  ) : (
-                                      <div className="text-xs text-amber-400 italic">No tienes libros creados aún.</div>
-                                  )}
-                              </div>
-                          )}
-                      </div>
-
-                      {/* Option 3: New Book */}
-                      <div 
-                        onClick={() => setSaveOption('new_book')}
-                        className={`p-3 rounded-lg border cursor-pointer transition-all flex flex-col gap-2 ${saveOption === 'new_book' ? 'bg-indigo-900/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}
-                      >
-                           <div className="flex items-center gap-3">
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${saveOption === 'new_book' ? 'border-indigo-400 bg-indigo-400' : 'border-slate-500'}`}>
-                                    {saveOption === 'new_book' && <Check className="w-3 h-3 text-slate-900" />}
+                                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
+                                    >
+                                        <option value="">-- Seleccionar Libro --</option>
+                                        {bookStacks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.puzzles.length} págs)</option>)}
+                                    </select>
                                 </div>
-                                <div>
+                            )}
+
+                            <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                <input 
+                                    type="radio" 
+                                    name="saveOption" 
+                                    checked={saveOption === 'new_book'} 
+                                    onChange={() => setSaveOption('new_book')}
+                                    className="accent-indigo-500"
+                                />
+                                <div className="flex-1">
                                     <div className="font-bold text-sm">Crear Nuevo Libro</div>
-                                    <div className="text-[10px] text-slate-400">Iniciar una nueva colección con este puzzle.</div>
+                                    <div className="text-[10px] text-slate-400">Inicia una nueva colección de sopas.</div>
                                 </div>
-                           </div>
+                            </label>
 
-                           {saveOption === 'new_book' && (
-                               <div className="ml-7 mt-1 space-y-2" onClick={(e) => e.stopPropagation()}>
-                                   <input 
+                             {saveOption === 'new_book' && (
+                                <div className="ml-6 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <input 
                                         type="text" 
-                                        placeholder="Nombre del Libro (ej: Animales Vol 1)"
+                                        placeholder="Nombre del Libro (ej. Animales)"
                                         value={newBookName}
                                         onChange={(e) => setNewBookName(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-600 rounded p-2 text-xs outline-none"
-                                   />
-                                   <div className="flex items-center gap-2">
-                                       <span className="text-xs text-slate-400">Meta de páginas:</span>
-                                       <input 
+                                        className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-[10px] text-slate-400">Meta de Páginas:</label>
+                                        <input 
                                             type="number" 
                                             value={newBookTarget}
                                             onChange={(e) => setNewBookTarget(parseInt(e.target.value))}
-                                            className="w-20 bg-slate-950 border border-slate-600 rounded p-1 text-xs outline-none"
-                                       />
-                                   </div>
-                               </div>
-                           )}
-                      </div>
+                                            className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white text-center"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                  </div>
 
-                  </div>
-                  
                   <div className="p-4 border-t border-slate-700 bg-slate-950 flex justify-end gap-2">
-                      <button 
-                          onClick={executeSave}
-                          className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm shadow-lg transition-all"
-                      >
-                          Confirmar y Guardar
-                      </button>
-                  </div>
+                    <button 
+                        onClick={executeSave}
+                        className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition-all"
+                    >
+                        Confirmar Guardado
+                    </button>
+                </div>
               </div>
           </div>
       )}
 
-      {/* Library Modal (Updated) */}
+      {/* Library Modal */}
       {showLibraryModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-slate-900 text-white w-full max-w-4xl h-[85vh] rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
+             <div className="bg-slate-900 text-white w-full max-w-4xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden h-[80vh] flex flex-col">
                 <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Library className="w-6 h-6 text-indigo-400"/> Biblioteca
-                        </h2>
-                        <div className="flex bg-slate-800 rounded-lg p-1">
-                            <button 
-                                onClick={() => setActiveLibraryTab('puzzles')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeLibraryTab === 'puzzles' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                Puzzles Sueltos
-                            </button>
-                            <button 
-                                onClick={() => setActiveLibraryTab('books')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeLibraryTab === 'books' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-                            >
-                                Mis Libros
-                            </button>
-                        </div>
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <FolderOpen className="w-6 h-6 text-amber-500"/> Biblioteca de Puzzles
+                    </h2>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleResetLibrary} 
+                            className="bg-red-900/40 hover:bg-red-900 border border-red-800 text-red-200 px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" /> Resetear Todo
+                        </button>
+                        <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white"/></button>
                     </div>
-                    <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white"/></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-[#11111b]">
+                {/* Tabs */}
+                <div className="flex border-b border-slate-700 bg-slate-800/50">
+                    <button 
+                        onClick={() => setActiveLibraryTab('puzzles')}
+                        className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'puzzles' ? 'border-indigo-500 text-indigo-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    >
+                        <FileJson className="w-4 h-4" /> Puzzles Sueltos ({libraryPuzzles.length})
+                    </button>
+                    <button 
+                         onClick={() => setActiveLibraryTab('books')}
+                         className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'books' ? 'border-amber-500 text-amber-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                    >
+                        <Book className="w-4 h-4" /> Libros / Colecciones ({bookStacks.length})
+                    </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-900">
                     
-                    {/* TAB: PUZZLES */}
+                    {/* Tab: Puzzles */}
                     {activeLibraryTab === 'puzzles' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {libraryPuzzles.length === 0 ? (
-                                <div className="col-span-full flex flex-col items-center justify-center h-64 text-slate-500">
-                                    <FolderOpen className="w-12 h-12 mb-2 opacity-50"/>
-                                    <p>No tienes puzzles guardados aún.</p>
+                            {libraryPuzzles.length === 0 && (
+                                <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
+                                    <FolderOpen className="w-12 h-12 mb-2 opacity-20"/>
+                                    No hay puzzles guardados aún.
                                 </div>
-                            ) : (
-                                libraryPuzzles.map(puzzle => (
-                                    <div key={puzzle.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-indigo-500 transition-all group relative">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <h3 className="font-bold text-white truncate max-w-[180px]">{puzzle.name}</h3>
-                                                <span className="text-[10px] text-slate-400 block">{new Date(puzzle.createdAt).toLocaleDateString()}</span>
-                                            </div>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${DIFFICULTY_PRESETS[puzzle.config.difficulty].color} text-white font-bold`}>
-                                                {puzzle.config.difficulty}
-                                            </span>
-                                        </div>
-                                        <div className="text-xs text-slate-400 mb-4 flex gap-2">
-                                            <span className="bg-slate-900 px-2 py-1 rounded">{puzzle.config.words.length} Palabras</span>
-                                            <span className="bg-slate-900 px-2 py-1 rounded">{puzzle.config.gridSize}x{puzzle.config.gridHeight || puzzle.config.gridSize}</span>
-                                        </div>
-                                        <div className="flex gap-2 mt-2">
-                                            <button 
-                                                onClick={() => {
-                                                    setGeneratedPuzzle(puzzle.puzzleData);
-                                                    setWordList(puzzle.config.words);
-                                                    setTitle(puzzle.config.title);
-                                                    setGridSize(puzzle.config.gridSize);
-                                                    setDifficulty(puzzle.config.difficulty);
-                                                    setThemeData(puzzle.config.themeData);
-                                                    setStyleMode(puzzle.config.styleMode);
-                                                    setMaskShape(puzzle.config.maskShape);
-                                                    setHiddenMessage(puzzle.config.hiddenMessage || '');
-                                                    setMargins(puzzle.config.margins || { top:0.5, bottom:0.5, left:0.5, right:0.5 });
-                                                    setBackgroundImage(puzzle.config.backgroundImage);
-                                                    setShowLibraryModal(false);
-                                                }}
-                                                className="flex-1 bg-indigo-600/20 hover:bg-indigo-600 hover:text-white text-indigo-300 py-2 rounded text-xs font-bold transition-colors"
-                                            >
-                                                Cargar
-                                            </button>
-                                            <button 
-                                                onClick={() => {
-                                                    deletePuzzleFromLibrary(puzzle.id);
-                                                    setLibraryPuzzles(getLibrary());
-                                                }}
-                                                className="p-2 bg-slate-700 hover:bg-red-900/50 hover:text-red-400 text-slate-400 rounded transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
                             )}
+                            {libraryPuzzles.map((p) => (
+                                <div key={p.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="font-bold text-white truncate pr-6" title={p.name}>{p.name}</h3>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                            p.config.difficulty === 'Fácil' ? 'bg-emerald-500/20 text-emerald-400' :
+                                            p.config.difficulty === 'Intermedio' ? 'bg-blue-500/20 text-blue-400' :
+                                            'bg-purple-500/20 text-purple-400'
+                                        }`}>{p.config.difficulty}</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mb-4 font-mono">
+                                        Creado: {new Date(p.createdAt).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => handleLoadPuzzle(p)}
+                                            className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded text-xs font-bold transition-colors"
+                                        >
+                                            Cargar
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if(confirm('¿Borrar puzzle permanentemente?')) {
+                                                    deletePuzzleFromLibrary(p.id);
+                                                    setLibraryPuzzles(getLibrary());
+                                                }
+                                            }}
+                                            className="px-3 bg-slate-700 hover:bg-red-900/50 hover:text-red-400 rounded text-xs transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
 
-                    {/* TAB: BOOKS */}
+                    {/* Tab: Books */}
                     {activeLibraryTab === 'books' && (
-                        <div className="space-y-4">
-                            {bookStacks.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                                    <Book className="w-12 h-12 mb-2 opacity-50"/>
-                                    <p>No tienes libros creados.</p>
-                                    <button onClick={() => {setShowLibraryModal(false); setShowSaveModal(true); setSaveOption('new_book');}} className="mt-4 text-indigo-400 hover:underline text-sm">
-                                        Crear mi primer libro al guardar
-                                    </button>
+                         <div className="space-y-4">
+                            {bookStacks.length === 0 && (
+                                <div className="text-center py-20 text-slate-500 italic flex flex-col items-center">
+                                    <Book className="w-12 h-12 mb-2 opacity-20"/>
+                                    No hay libros creados. Usa la opción "Guardar > Crear Nuevo Libro".
                                 </div>
-                            ) : (
-                                bookStacks.map(stack => (
-                                    <div key={stack.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                                        <div className="p-4 bg-slate-800/50 border-b border-slate-700 flex justify-between items-center">
-                                            <div className="flex items-center gap-4">
-                                                <div className="bg-amber-600/20 p-2 rounded-lg text-amber-500">
-                                                    <Book className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-bold text-white text-lg">{stack.name}</h3>
-                                                    <div className="flex items-center gap-3 text-xs text-slate-400">
-                                                        <span>Creado: {new Date(stack.createdAt).toLocaleDateString()}</span>
-                                                        <span>•</span>
-                                                        <span>Meta: {stack.targetCount} páginas</span>
+                            )}
+                            {bookStacks.map((book) => (
+                                <div key={book.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                                    <div className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-amber-500/20 p-2 rounded text-amber-400">
+                                                <Book className="w-5 h-5"/>
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-white">{book.name}</h3>
+                                                <div className="text-xs text-slate-400 flex items-center gap-2">
+                                                    <span>Progreso: {book.puzzles.length} / {book.targetCount} páginas</span>
+                                                    <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className="h-full bg-amber-500 transition-all" 
+                                                            style={{width: `${Math.min(100, (book.puzzles.length / book.targetCount) * 100)}%`}}
+                                                        ></div>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                 <Tooltip text="Descargar API JSON (Data)" position="bottom">
-                                                    <button 
-                                                        onClick={() => handleExportBookJson(stack)}
-                                                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-emerald-900/30 text-emerald-400 border border-slate-700 hover:border-emerald-500 rounded-lg text-xs font-mono transition-all"
-                                                    >
-                                                        <FileJson className="w-4 h-4"/> API EXPORT
-                                                    </button>
-                                                 </Tooltip>
-                                                 <button 
-                                                    onClick={() => {
-                                                        if(confirm('¿Borrar libro completo?')) {
-                                                            deleteBookStack(stack.id);
-                                                            setBookStacks(getBookStacks());
-                                                        }
-                                                    }}
-                                                    className="p-2 text-slate-500 hover:text-red-400 transition-colors"
-                                                 >
-                                                     <Trash2 className="w-4 h-4"/>
-                                                 </button>
-                                            </div>
                                         </div>
-                                        
-                                        {/* Progress Bar */}
-                                        <div className="px-4 pt-4">
-                                            <div className="flex justify-between text-xs font-bold text-slate-400 mb-1">
-                                                <span>Progreso</span>
-                                                <span>{stack.puzzles.length} / {stack.targetCount}</span>
-                                            </div>
-                                            <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
-                                                <div 
-                                                    className="h-full bg-indigo-500 transition-all duration-500"
-                                                    style={{ width: `${Math.min(100, (stack.puzzles.length / stack.targetCount) * 100)}%` }}
-                                                ></div>
-                                            </div>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => handleExportBookJson(book)}
+                                                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white" 
+                                                title="Descargar JSON del Libro"
+                                            >
+                                                <Download className="w-4 h-4"/>
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    if(confirm(`¿Eliminar libro "${book.name}" y todas sus páginas?`)) {
+                                                        deleteBookStack(book.id);
+                                                        setBookStacks(getBookStacks());
+                                                    }
+                                                }}
+                                                className="p-2 hover:bg-red-900/30 rounded-lg text-slate-400 hover:text-red-400"
+                                            >
+                                                <Trash2 className="w-4 h-4"/>
+                                            </button>
                                         </div>
-
-                                        {/* Preview List (Collapsible-ish) */}
-                                        <div className="p-4">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                                                {stack.puzzles.map((p, idx) => (
-                                                    <div key={p.id} className="bg-slate-900/50 p-2 rounded border border-slate-700/50 flex items-center justify-between group">
-                                                        <div className="flex items-center gap-2 overflow-hidden">
-                                                            <span className="text-xs font-mono font-bold text-slate-500 w-5 flex-shrink-0">#{idx + 1}</span>
-                                                            <span className="text-xs text-slate-300 truncate">{p.name}</span>
-                                                        </div>
+                                    </div>
+                                    
+                                    {/* Pages List */}
+                                    {book.puzzles.length > 0 && (
+                                        <div className="bg-slate-900/50 p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                                            {book.puzzles.map((page, idx) => (
+                                                <div key={page.id} className="flex items-center justify-between p-2 bg-slate-800 rounded border border-slate-700/50 text-xs">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <span className="font-mono text-slate-500 w-5">#{idx+1}</span>
+                                                        <span className="truncate max-w-[100px]" title={page.name}>{page.name}</span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                         <button 
+                                                            onClick={() => handleLoadPuzzle(page)}
+                                                            className="p-1 hover:text-indigo-400" 
+                                                            title="Editar"
+                                                        >
+                                                            <Eye className="w-3 h-3"/>
+                                                        </button>
                                                         <button 
                                                             onClick={() => {
-                                                                if(confirm('¿Quitar del libro?')) {
-                                                                    removePuzzleFromStack(stack.id, p.id);
+                                                                if(confirm('¿Quitar página del libro?')) {
+                                                                    removePuzzleFromStack(book.id, page.id);
                                                                     setBookStacks(getBookStacks());
                                                                 }
                                                             }}
-                                                            className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            className="p-1 hover:text-red-400"
                                                         >
                                                             <X className="w-3 h-3"/>
                                                         </button>
                                                     </div>
-                                                ))}
-                                                {stack.puzzles.length === 0 && (
-                                                    <div className="col-span-full text-center text-xs text-slate-600 py-2">Libro vacío</div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
+                                    )}
+                                </div>
+                            ))}
+                         </div>
                     )}
 
                 </div>
-            </div>
+             </div>
         </div>
       )}
 
-      {/* Art Studio Modal */}
-      {showArtStudio && (
-          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className="bg-slate-900 text-white w-full max-w-4xl h-[80vh] rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
-                 <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Image className="w-6 h-6 text-pink-500"/> Art Studio Gallery
-                    </h2>
-                    <button onClick={() => setShowArtStudio(false)}><X className="w-6 h-6 text-slate-400 hover:text-white"/></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 bg-[#11111b] custom-scrollbar">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {artLibrary.length === 0 ? (
-                            <div className="col-span-full text-center py-20 text-slate-500">
-                                <Palette className="w-12 h-12 mx-auto mb-2 opacity-50"/>
-                                <p>No hay arte generado. Usa el panel izquierdo para crear fondos.</p>
-                            </div>
-                        ) : (
-                            artLibrary.map(art => (
-                                <div key={art.id} className="relative group rounded-lg overflow-hidden border border-slate-700 aspect-[3/4]">
-                                    <img src={art.imageBase64} className="w-full h-full object-cover" alt={art.name} />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                                        <p className="text-xs font-bold text-white line-clamp-2 mb-2">{art.prompt}</p>
-                                        <div className="flex gap-2">
-                                            <button 
-                                                onClick={() => {
-                                                    setBackgroundImage(art.imageBase64);
-                                                    setBackgroundStyle(art.style);
-                                                    setShowArtStudio(false);
-                                                }}
-                                                className="flex-1 bg-indigo-600 text-white text-[10px] py-1.5 rounded font-bold hover:bg-indigo-500"
-                                            >
-                                                USAR
-                                            </button>
-                                            <button 
-                                                onClick={() => {
-                                                    deleteArtTemplate(art.id);
-                                                    setArtLibrary(getArtLibrary());
-                                                }}
-                                                className="bg-red-900/50 text-red-200 text-[10px] py-1.5 px-2 rounded hover:bg-red-600"
-                                            >
-                                                <Trash2 className="w-3 h-3"/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="absolute top-2 right-2">
-                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${art.style === 'bw' ? 'bg-black text-white border-white' : 'bg-white text-indigo-600 border-indigo-600'}`}>
-                                            {art.style === 'bw' ? 'B/N' : 'COL'}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-             </div>
-          </div>
-      )}
-
-       {/* Diagnostics Overlay */}
-       {showDiagnostics && (
-           <SystemDiagnostics settings={settings} onClose={() => setShowDiagnostics(false)} />
-       )}
+      {showDiagnostics && <SystemDiagnostics settings={settings} onClose={() => setShowDiagnostics(false)} />}
 
     </div>
   );

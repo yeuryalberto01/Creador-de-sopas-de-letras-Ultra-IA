@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { GeneratedPuzzle, PuzzleConfig, FontType } from '../types';
 
@@ -18,7 +17,7 @@ const getFontFamily = (fontType: FontType, isColor: boolean) => {
 };
 
 const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
-  if (!puzzle) {
+  if (!puzzle || !puzzle.grid) {
     return (
         <div className="w-[8.5in] h-[11in] bg-white flex items-center justify-center flex-col text-gray-400 animate-pulse">
             <div className="w-16 h-16 border-4 border-gray-200 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
@@ -32,7 +31,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     title, headerLeft, headerRight, footerText, pageNumber,
     words, showSolution, styleMode, themeData,
     fontType, backgroundImage, backgroundStyle,
-    margins 
+    margins, overlayOpacity, textOverlayOpacity
   } = config;
 
   // Defaults if margins not provided (0.5 inch default)
@@ -40,6 +39,10 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const marginBottom = margins?.bottom ?? 0.5;
   const marginLeft = margins?.left ?? 0.5;
   const marginRight = margins?.right ?? 0.5;
+  
+  // Opacity Defaults
+  const finalGridOpacity = overlayOpacity !== undefined ? overlayOpacity : 0.85;
+  const finalTextOpacity = textOverlayOpacity !== undefined ? textOverlayOpacity : 0.9;
 
   // Derive Dimensions
   const gridRows = grid.length;
@@ -49,19 +52,12 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const isColor = styleMode === 'color' && themeData;
   const fontFamily = getFontFamily(fontType, !!isColor);
   
-  // FIX: If background image exists, container background must be transparent
-  // otherwise the white background covers the image due to stacking context.
+  // Container background: Transparent if image exists so we can see it
   const containerStyle = isColor 
     ? { backgroundColor: themeData.backgroundColor } 
     : { backgroundColor: backgroundImage ? 'transparent' : 'white' };
   
-  const headerStyle = isColor ? { 
-    color: themeData.primaryColor,
-    borderBottomColor: themeData.primaryColor 
-  } : { 
-    color: 'black',
-    borderBottomColor: 'black' 
-  };
+  const headerTextColor = isColor ? themeData.primaryColor : 'black';
 
   // --- LOGICA DE ESCALADO PROPORCIONAL CON MÁRGENES ---
   // Page size: 8.5 x 11 inches
@@ -73,7 +69,6 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const availableHeight = PAGE_HEIGHT - marginTop - marginBottom;
 
   // Reserve space for Header and Footer roughly (in inches)
-  // Header ~ 1.2 inch, Footer/Wordlist ~ 2.5 inches depending on word count
   const estimatedHeaderHeight = 1.0;
   const estimatedFooterHeight = 2.0 + (words.length > 20 ? 0.5 : 0); 
   
@@ -98,16 +93,41 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
   const calculatedHeight = gridRows * cellSize;
   const fontSizeInch = cellSize * 0.62;
 
-  // Background logic for the Grid Container specifically (The box behind letters)
+  // Background logic for the Grid Container (The box behind letters)
   const getGridBackgroundColor = () => {
       if (config.maskShape !== 'SQUARE') return 'transparent';
       
       if (isColor) return themeData.secondaryColor;
       
-      // If we have an image, we need a semi-transparent white box so letters are readable
-      if (backgroundImage) return 'rgba(255,255,255,0.85)';
+      // Dynamic overlay opacity for image backgrounds
+      if (backgroundImage) {
+          return `rgba(255,255,255,${finalGridOpacity})`;
+      }
       
       return 'white';
+  };
+
+  // --- HELPER: Glassmorphism / Card Style for Text Areas ---
+  const hasBackground = !!backgroundImage;
+  
+  const getTextCardStyle = (addMarginBottom: boolean = true): React.CSSProperties => {
+      if (!hasBackground) {
+          // Standard Clean Style without background image
+          return {
+              marginBottom: addMarginBottom ? '1rem' : '0'
+          };
+      }
+
+      // "Glass" Style when background image is present
+      return {
+          backgroundColor: `rgba(255, 255, 255, ${finalTextOpacity})`,
+          backdropFilter: finalTextOpacity < 0.95 ? 'blur(4px)' : 'none',
+          borderRadius: '0.5rem',
+          padding: '0.75rem',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+          border: '1px solid rgba(255, 255, 255, 0.4)',
+          marginBottom: addMarginBottom ? '1rem' : '0'
+      };
   };
 
   const gridContainerStyle: React.CSSProperties = {
@@ -119,10 +139,11 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     margin: '0 auto', 
     backgroundColor: getGridBackgroundColor(),
     borderColor: isColor ? themeData.primaryColor : 'black',
-    backdropFilter: backgroundImage ? 'blur(2px)' : 'none',
+    // Apply blur for glassmorphism effect if semi-transparent
+    backdropFilter: backgroundImage && finalGridOpacity > 0.05 && finalGridOpacity < 0.95 ? 'blur(2px)' : 'none',
     borderRadius: config.maskShape === 'SQUARE' ? '4px' : '0',
-    // Add shadow if floating over image
-    boxShadow: backgroundImage && config.maskShape === 'SQUARE' ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'
+    // Shadow only if opacity is high enough to look like a card
+    boxShadow: backgroundImage && config.maskShape === 'SQUARE' && finalGridOpacity > 0.4 ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'
   };
 
   const cellStyle = (isWord: boolean, isValid: boolean): React.CSSProperties => ({
@@ -131,7 +152,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
         ? (isColor ? themeData.primaryColor : '#d1d5db') 
         : (isValid && config.maskShape === 'SQUARE' 
             ? 'transparent' 
-            : (isValid && isColor ? themeData.secondaryColor : (isValid ? (backgroundImage ? 'rgba(255,255,255,0.6)' : 'white') : 'transparent'))),
+            : (isValid && isColor ? themeData.secondaryColor : (isValid ? (backgroundImage ? `rgba(255,255,255,${finalGridOpacity * 0.7})` : 'white') : 'transparent'))),
     ...(showSolution && isWord && isColor ? { color: 'white' } : {}),
     fontFamily: fontFamily,
     opacity: isValid ? 1 : 0, 
@@ -154,13 +175,13 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
     >
       {/* --- ART GENERATION LAYER --- */}
       {backgroundImage && (
-          <div className="absolute inset-0 w-full h-full z-0">
+          <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
             <img 
                 src={backgroundImage} 
                 alt="Puzzle Background" 
                 className="w-full h-full object-cover"
                 style={{
-                    opacity: backgroundStyle === 'bw' ? 1.0 : 0.5,
+                    opacity: backgroundStyle === 'bw' ? 1.0 : 0.95, // Keep mostly opaque to see the vector art
                     filter: backgroundStyle === 'bw' ? 'grayscale(100%) contrast(125%)' : 'none'
                 }}
             />
@@ -178,21 +199,29 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
       {/* WRAPPER FOR CONTENT TO ENSURE IT SITS ON TOP OF IMAGE */}
       <div className="relative z-10 w-full h-full flex flex-col">
         
-        {/* Header */}
-        <div className={`w-full border-b-2 mb-4 pb-2 flex-shrink-0 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`} style={headerStyle}>
-            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-2" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
-                {title || "Sopa de Letras"}
-            </h1>
-            <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
-            <span className="min-w-[150px]">{headerLeft}</span>
-            <span className="min-w-[150px] text-right">{headerRight}</span>
+        {/* Header - Now using Dynamic Card Style */}
+        <div 
+            className="w-full flex-shrink-0 transition-all" 
+            style={getTextCardStyle(true)}
+        >
+             <div 
+                className={`w-full ${!hasBackground ? 'border-b-2 pb-2' : ''}`}
+                style={{ borderColor: headerTextColor, color: headerTextColor }}
+             >
+                <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-2" style={{ fontFamily: fontType === 'FUN' ? fontFamily : 'Inter' }}>
+                    {title || "Sopa de Letras"}
+                </h1>
+                <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
+                    <span className="min-w-[150px]">{headerLeft}</span>
+                    <span className="min-w-[150px] text-right">{headerRight}</span>
+                </div>
             </div>
         </div>
 
         {/* Grid Container */}
         <div className="flex-grow flex items-center justify-center w-full mb-4 relative min-h-0">
             <div 
-            className={`transition-all duration-300 ${config.maskShape === 'SQUARE' ? 'border-2' : ''}`}
+            className={`transition-all duration-300 ${config.maskShape === 'SQUARE' && !backgroundImage ? 'border-2' : ''}`}
             style={gridContainerStyle}
             >
             {grid.map((row, y) => (
@@ -220,10 +249,13 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
             </div>
         </div>
 
-        {/* Word List */}
-        <div className={`w-full mt-auto mb-2 px-2 flex-shrink-0 ${backgroundImage ? 'bg-white/90 p-4 rounded-lg shadow-sm' : ''}`}>
+        {/* Word List - Now using Dynamic Card Style */}
+        <div 
+            className="w-full mt-auto flex-shrink-0 transition-all"
+            style={getTextCardStyle(true)}
+        >
             <h3 
-                className="text-lg font-bold mb-2 border-b inline-block px-2 py-0.5 rounded-t-md" 
+                className="text-lg font-bold mb-2 inline-block px-2 py-0.5 rounded-t-md border-b" 
                 style={{ 
                     color: isColor ? 'white' : 'black',
                     backgroundColor: isColor ? themeData.primaryColor : 'transparent',
@@ -260,20 +292,25 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config }) => {
             </div>
         </div>
         
-        {/* Footer */}
-        <div className={`w-full flex justify-between items-end text-gray-500 mt-1 border-t pt-1 pb-0 relative flex-shrink-0 ${backgroundImage ? 'bg-white/90 px-2 rounded-sm' : ''}`}>
-            <div className="flex flex-col">
-                <span className="text-[9px] font-medium uppercase tracking-wide">
-                    {footerText !== undefined ? footerText : "Generado con SopaCreator AI"}
-                </span>
-                <span className="font-mono text-[8px] opacity-60">ID: {puzzle.seed}</span>
-            </div>
-            
-            {pageNumber && (
-                <div className="text-lg font-bold font-mono text-black absolute right-0 bottom-1">
-                    {pageNumber}
+        {/* Footer - Now using Dynamic Card Style */}
+        <div 
+            className="w-full flex-shrink-0 transition-all"
+            style={getTextCardStyle(false)}
+        >
+             <div className={`w-full flex justify-between items-end text-gray-500 ${!hasBackground ? 'border-t pt-1' : ''} relative`}>
+                <div className="flex flex-col">
+                    <span className="text-[9px] font-medium uppercase tracking-wide">
+                        {footerText !== undefined ? footerText : "Generado con SopaCreator AI"}
+                    </span>
+                    <span className="font-mono text-[8px] opacity-60">ID: {puzzle.seed}</span>
                 </div>
-            )}
+                
+                {pageNumber && (
+                    <div className="text-lg font-bold font-mono text-black absolute right-0 bottom-1">
+                        {pageNumber}
+                    </div>
+                )}
+            </div>
         </div>
 
       </div>
