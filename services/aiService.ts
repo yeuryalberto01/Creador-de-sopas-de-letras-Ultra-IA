@@ -1,6 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISettings, PuzzleTheme } from "../types";
 
+// --- Configuration ---
+const USE_BACKEND = true;
+const BACKEND_URL = "http://localhost:8000/api/ai/generate";
+
 // --- Provider Presets ---
 
 export const PROVIDER_PRESETS = {
@@ -18,14 +22,14 @@ export const PROVIDER_PRESETS = {
         providerType: 'openai_compatible',
         baseUrl: 'https://api.deepseek.com',
         defaultModel: 'deepseek-chat',
-        requiresBaseUrl: false // We pre-fill it, but user can edit if they want
+        requiresBaseUrl: false
     },
     grok: {
         id: 'grok',
         name: 'xAI (Grok)',
         providerType: 'openai_compatible',
         baseUrl: 'https://api.x.ai/v1',
-        defaultModel: 'grok-beta',
+        defaultModel: 'grok-4-latest',
         requiresBaseUrl: false
     },
     openai: {
@@ -57,32 +61,61 @@ export const PROVIDER_PRESETS = {
 // --- Generic Helpers ---
 
 const cleanJson = (text: string) => {
-  try {
-      // Remove markdown code blocks if present
-      let clean = text.replace(/```json/g, '').replace(/```/g, '');
-      // Find the first { and last }
-      const firstBrace = clean.indexOf('{');
-      const lastBrace = clean.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-          clean = clean.substring(firstBrace, lastBrace + 1);
-      }
-      return JSON.parse(clean);
-  } catch (e) {
-      console.error("JSON Parse Error on text:", text);
-      throw new Error("La IA no devolvió un JSON válido.");
-  }
+    try {
+        // Remove markdown code blocks if present
+        let clean = text.replace(/```json/g, '').replace(/```/g, '');
+        // Find the first { and last }
+        const firstBrace = clean.indexOf('{');
+        const lastBrace = clean.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            clean = clean.substring(firstBrace, lastBrace + 1);
+        }
+        return JSON.parse(clean);
+    } catch (e) {
+        console.error("JSON Parse Error on text:", text);
+        throw new Error("La IA no devolvió un JSON válido.");
+    }
 };
 
 // --- API Client Implementations ---
 
 // 1. Google Gemini Client
 const callGemini = async (settings: AISettings, prompt: string, schemaType?: any): Promise<string> => {
-    // If user provided a key in settings, use it. Otherwise fallback to env (only works if env is injected)
+    if (USE_BACKEND) {
+        try {
+            const response = await fetch(BACKEND_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.apiKey || "" // Optional: Send key if user provided one overrides backend env
+                },
+                body: JSON.stringify({
+                    provider: 'gemini',
+                    model: settings.modelName,
+                    prompt: prompt,
+                    schema_type: schemaType
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Backend Error (${response.status}): ${errText}`);
+            }
+
+            const data = await response.json();
+            return data.text || "{}";
+        } catch (e: any) {
+            console.error("Backend Call Failed:", e);
+            throw e;
+        }
+    }
+
+    // Fallback to Client-Side (Legacy)
     const apiKey = settings.apiKey || process.env.API_KEY;
     if (!apiKey) throw new Error("Falta la API Key de Google Gemini");
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     const config: any = {
         temperature: 0.7,
     };
@@ -103,6 +136,36 @@ const callGemini = async (settings: AISettings, prompt: string, schemaType?: any
 
 // 2. OpenAI Compatible Client (DeepSeek, Groq, Local)
 const callOpenAICompatible = async (settings: AISettings, prompt: string, jsonMode: boolean): Promise<string> => {
+    if (USE_BACKEND && !settings.baseUrl.includes('localhost')) {
+        try {
+            const response = await fetch(BACKEND_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.apiKey || ""
+                },
+                body: JSON.stringify({
+                    provider: settings.provider, // deepseek, grok, openai
+                    model: settings.modelName,
+                    prompt: prompt,
+                    json_mode: jsonMode
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Backend Error (${response.status}): ${errText}`);
+            }
+
+            const data = await response.json();
+            return data.text || "{}";
+        } catch (e: any) {
+            console.error("Backend Call Failed:", e);
+            throw e;
+        }
+    }
+
+    // Client-Side Direct Call
     if (!settings.apiKey && !settings.baseUrl.includes('localhost')) {
         throw new Error("Falta la API Key");
     }
@@ -147,22 +210,22 @@ const callOpenAICompatible = async (settings: AISettings, prompt: string, jsonMo
 export const testApiConnection = async (settings: AISettings): Promise<{ success: boolean; message: string }> => {
     try {
         const prompt = "Reply with exactly this JSON: {\"status\": \"ok\"}";
-        
+
         let response = "";
         if (settings.provider === 'gemini') {
             response = await callGemini(settings, prompt);
         } else {
             response = await callOpenAICompatible(settings, prompt, true);
         }
-        
+
         // Try to parse to ensure it's valid
         const json = cleanJson(response);
         if (json && json.status === 'ok') {
             return { success: true, message: "Conectado" };
         } else if (json) {
-             return { success: true, message: "Conectado (Resp. Inesperada)" };
+            return { success: true, message: "Conectado (Resp. Inesperada)" };
         } else {
-             return { success: false, message: "Respuesta inválida" };
+            return { success: false, message: "Respuesta inválida" };
         }
     } catch (error: any) {
         return { success: false, message: error.message || "Error desconocido" };
@@ -171,7 +234,7 @@ export const testApiConnection = async (settings: AISettings): Promise<{ success
 
 const routeRequest = async (settings: AISettings, prompt: string, schema?: any): Promise<any> => {
     let textResponse = "";
-    
+
     if (settings.provider === 'gemini') {
         textResponse = await callGemini(settings, prompt, schema);
     } else {
@@ -179,25 +242,15 @@ const routeRequest = async (settings: AISettings, prompt: string, schema?: any):
         // but here we just pass the flag.
         textResponse = await callOpenAICompatible(settings, prompt, true);
     }
-    
+
     return cleanJson(textResponse);
 };
 
 export const generateWordListAI = async (settings: AISettings, topic: string, count: number, difficulty: string): Promise<string[]> => {
     const prompt = `
-        Genera un objeto JSON con una lista de palabras para una sopa de letras.
-        Tema: "${topic}".
-        Dificultad: ${difficulty}.
-        Cantidad: ${count} palabras.
-        
-        Reglas:
-        1. SOLO palabras individuales (sin frases).
-        2. En ESPAÑOL.
-        3. Normalizadas: Mayúsculas, sin tildes, solo letras A-Z y Ñ.
-        4. Longitud mínima: 3 letras.
-        5. Devuelve SOLO el JSON.
-        
-        Ejemplo de formato: { "words": ["PALABRA1", "PALABRA2"] }
+        Genera JSON con ${count} palabras en ESPAÑOL sobre "${topic}".
+        Reglas: Sin tildes, mayúsculas, sin frases.
+        Formato: { "words": ["PALABRA1", "PALABRA2"] }
     `;
 
     // Gemini Schema definition
@@ -210,15 +263,15 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
 
     try {
         const data = await routeRequest(settings, prompt, geminiSchema);
-        
+
         let words = data.words || [];
         if (!Array.isArray(words)) return [];
 
         // Double clean
-        words = words.map((w: string) => 
+        words = words.map((w: string) =>
             w.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-ZÑ]/g, "")
         ).filter((w: string) => w.length >= 3);
-        
+
         return words;
     } catch (error) {
         console.error("Word Generation Error:", error);
@@ -228,23 +281,9 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
 
 export const generateThemeAI = async (settings: AISettings, topic: string): Promise<PuzzleTheme | null> => {
     const prompt = `
-        Actúa como un diseñador gráfico experto. Genera una paleta de colores CSS para una hoja de sopa de letras basada en el tema: "${topic}".
-        
-        Devuelve un JSON con:
-        - primaryColor: Color principal fuerte (bordes, títulos).
-        - secondaryColor: Color de fondo muy suave para la grilla (debe ser legible con texto negro).
-        - textColor: Color del texto (generalmente oscuro, casi negro o azul oscuro).
-        - backgroundColor: Color de fondo de la página (generalmente blanco o un tinte muy sutil).
-        
-        IMPORTANTE: Devuelve SOLO el JSON.
-
-        Ejemplo de salida:
-        {
-            "primaryColor": "#b91c1c",
-            "secondaryColor": "#fef2f2",
-            "textColor": "#1a0f0f",
-            "backgroundColor": "#ffffff"
-        }
+        Generate JSON color palette for topic "${topic}".
+        Keys: primaryColor (strong), secondaryColor (pale), textColor (dark), backgroundColor (white/subtle).
+        Format: { "primaryColor": "#...", "secondaryColor": "#...", "textColor": "#...", "backgroundColor": "#..." }
     `;
 
     const geminiSchema = {
@@ -279,10 +318,10 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
     if (!apiKey) throw new Error("Se requiere API Key de Google para generar imágenes.");
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     // Construct Prompt based on Style - Optimized for Text Overlay with strong Negative Space focus
     let finalPrompt = "";
-    
+
     if (style === 'bw') {
         finalPrompt = `
             Design a professional coloring book style PAGE BORDER / FRAME about: ${prompt}.

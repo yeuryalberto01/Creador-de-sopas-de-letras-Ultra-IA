@@ -1,204 +1,131 @@
-
 import { SavedPuzzleRecord, AppSettings, GeneratedPuzzle, PuzzleConfig, ArtTemplate, BookStack } from "../types";
+import { db, migrateFromLocalStorage } from "../db";
 
-const STORAGE_KEY_DB = "sopa_creator_db";
-const STORAGE_KEY_STACKS = "sopa_creator_stacks";
-const STORAGE_KEY_SETTINGS = "sopa_creator_settings";
-const STORAGE_KEY_ART = "sopa_creator_art_library";
+// Initialize DB and migration
+migrateFromLocalStorage();
 
-// --- Utility: Robust UUID Generator ---
-const generateId = () => {
-    // Try native crypto API first
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        try {
-            return crypto.randomUUID();
-        } catch (e) {
-            // Fallback if crypto.randomUUID fails (e.g. insecure context)
-        }
-    }
-    // Fallback: Date timestamp + random string
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-};
-
-// --- Settings Management ---
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
     logicAI: {
         provider: 'gemini',
-        apiKey: process.env.API_KEY || '', // Fallback for demo, though env usually not avail in browser built
+        apiKey: import.meta.env.VITE_API_KEY || process.env.API_KEY || '',
         modelName: 'gemini-2.5-flash'
     },
     designAI: {
         provider: 'gemini',
-        apiKey: process.env.API_KEY || '',
+        apiKey: import.meta.env.VITE_API_KEY || process.env.API_KEY || '',
         modelName: 'gemini-2.5-flash'
     }
 };
 
-export const loadSettings = (): AppSettings => {
-    const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+// --- Settings Management ---
+
+export const loadSettings = async (): Promise<AppSettings> => {
+    try {
+        const saved = await db.settings.get('global_settings');
+        if (saved) {
+            return { ...DEFAULT_SETTINGS, ...saved };
+        }
+        return DEFAULT_SETTINGS;
+    } catch (e) {
+        console.error("Failed to load settings", e);
+        return DEFAULT_SETTINGS;
     }
-    return DEFAULT_SETTINGS;
 };
 
-export const saveSettings = (settings: AppSettings) => {
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+export const saveSettings = async (settings: AppSettings) => {
+    try {
+        await db.settings.put({ ...settings }, 'global_settings');
+    } catch (e) {
+        console.error("Failed to save settings", e);
+    }
 };
 
 // --- Puzzle Database Management (Single Puzzles) ---
 
-export const savePuzzleToLibrary = (name: string, config: PuzzleConfig, puzzleData: GeneratedPuzzle): SavedPuzzleRecord => {
-    const records = getLibrary(); // This now auto-fixes IDs
+export const savePuzzleToLibrary = async (name: string, config: PuzzleConfig, puzzleData: GeneratedPuzzle): Promise<SavedPuzzleRecord> => {
     const newRecord: SavedPuzzleRecord = {
-        id: generateId(),
+        id: crypto.randomUUID(),
         name: name || "Sin título",
         createdAt: Date.now(),
         config,
         puzzleData
     };
-    records.unshift(newRecord); // Add to top
-    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(records));
+    await db.puzzles.add(newRecord);
     return newRecord;
 };
 
-export const getLibrary = (): SavedPuzzleRecord[] => {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY_DB);
-        if (!saved) return [];
-        
-        let records = JSON.parse(saved);
-        if (!Array.isArray(records)) return [];
-
-        // AUTO-FIX: Ensure all records have an ID. If not, assign one and save back immediately.
-        // This fixes "cannot delete" issues for old files.
-        let needsSave = false;
-        const cleanRecords = records.map(r => {
-            if (!r || typeof r !== 'object') return null;
-            if (!r.id) {
-                r.id = generateId();
-                needsSave = true;
-            }
-            return r;
-        }).filter(r => r !== null) as SavedPuzzleRecord[];
-
-        if (needsSave) {
-            localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(cleanRecords));
-        }
-
-        return cleanRecords;
-    } catch (e) {
-        console.error("Library corrupted, returning empty.", e);
-        return [];
-    }
+export const deletePuzzleFromLibrary = async (id: string) => {
+    await db.puzzles.delete(id);
 };
 
-export const deletePuzzleFromLibrary = (id: string) => {
-    const records = getLibrary();
-    const filtered = records.filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(filtered));
+export const getLibrary = async (): Promise<SavedPuzzleRecord[]> => {
+    return await db.puzzles.orderBy('createdAt').reverse().toArray();
 };
 
 // --- NEW: Reset Function ---
-export const resetLibrary = () => {
-    localStorage.removeItem(STORAGE_KEY_DB);
-    localStorage.removeItem(STORAGE_KEY_STACKS);
-    // Optional: Keep settings and art, or wipe them too? User said "old files", usually implies data.
-    // We will keep settings to be nice.
+export const resetLibrary = async () => {
+    await db.puzzles.clear();
+    await db.stacks.clear();
+    // Optional: clear art? await db.art.clear();
 };
 
 // --- Book Stacks Management ---
 
-export const getBookStacks = (): BookStack[] => {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY_STACKS);
-        if (!saved) return [];
-        let stacks = JSON.parse(saved);
-        if (!Array.isArray(stacks)) return [];
-
-        // Auto-fix IDs for stacks too
-        let needsSave = false;
-        const cleanStacks = stacks.map(s => {
-            if (!s.id) {
-                s.id = generateId();
-                needsSave = true;
-            }
-            return s;
-        });
-
-        if (needsSave) {
-             localStorage.setItem(STORAGE_KEY_STACKS, JSON.stringify(cleanStacks));
-        }
-        return cleanStacks;
-    } catch (e) {
-        return [];
-    }
-};
-
-export const createBookStack = (name: string, targetCount: number): BookStack => {
-    const stacks = getBookStacks();
+export const createBookStack = async (name: string, targetCount: number): Promise<BookStack> => {
     const newStack: BookStack = {
-        id: generateId(),
+        id: crypto.randomUUID(),
         name,
         targetCount,
         createdAt: Date.now(),
         puzzles: []
     };
-    stacks.unshift(newStack);
-    localStorage.setItem(STORAGE_KEY_STACKS, JSON.stringify(stacks));
+    await db.stacks.add(newStack);
     return newStack;
 };
 
-export const addPuzzleToStack = (stackId: string, puzzleRecord: SavedPuzzleRecord) => {
-    const stacks = getBookStacks();
-    const stackIndex = stacks.findIndex(s => s.id === stackId);
-    if (stackIndex !== -1) {
-        // Automatically assign page number based on position
-        const pageNum = stacks[stackIndex].puzzles.length + 1;
+export const addPuzzleToStack = async (stackId: string, puzzleRecord: SavedPuzzleRecord) => {
+    const stack = await db.stacks.get(stackId);
+    if (stack) {
+        const pageNum = stack.puzzles.length + 1;
         const recordWithPage = {
             ...puzzleRecord,
-            id: generateId(), // Always ensure unique ID for the stack instance
+            id: crypto.randomUUID(),
             config: {
                 ...puzzleRecord.config,
                 pageNumber: pageNum.toString()
             }
         };
-        
-        stacks[stackIndex].puzzles.push(recordWithPage);
-        localStorage.setItem(STORAGE_KEY_STACKS, JSON.stringify(stacks));
+        stack.puzzles.push(recordWithPage);
+        await db.stacks.put(stack);
     }
 };
 
-export const deleteBookStack = (id: string) => {
-    const stacks = getBookStacks();
-    const filtered = stacks.filter(s => s.id !== id);
-    localStorage.setItem(STORAGE_KEY_STACKS, JSON.stringify(filtered));
+export const deleteBookStack = async (id: string) => {
+    await db.stacks.delete(id);
 };
 
-export const removePuzzleFromStack = (stackId: string, puzzleId: string) => {
-    const stacks = getBookStacks();
-    const stackIndex = stacks.findIndex(s => s.id === stackId);
-    if (stackIndex !== -1) {
-        stacks[stackIndex].puzzles = stacks[stackIndex].puzzles.filter(p => p.id !== puzzleId);
-        localStorage.setItem(STORAGE_KEY_STACKS, JSON.stringify(stacks));
+export const getBookStacks = async (): Promise<BookStack[]> => {
+    return await db.stacks.orderBy('name').toArray();
+};
+
+export const removePuzzleFromStack = async (stackId: string, puzzleId: string) => {
+    const stack = await db.stacks.get(stackId);
+    if (stack) {
+        stack.puzzles = stack.puzzles.filter(p => p.id !== puzzleId);
+        await db.stacks.put(stack);
     }
 };
 
 // --- Art Template Management ---
 
-export const saveArtTemplate = (template: ArtTemplate) => {
-    const library = getArtLibrary();
-    library.unshift(template);
-    localStorage.setItem(STORAGE_KEY_ART, JSON.stringify(library));
+export const saveArtTemplate = async (template: ArtTemplate) => {
+    await db.art.add(template);
 };
 
-export const getArtLibrary = (): ArtTemplate[] => {
-    const saved = localStorage.getItem(STORAGE_KEY_ART);
-    return saved ? JSON.parse(saved) : [];
+export const deleteArtTemplate = async (id: string) => {
+    await db.art.delete(id);
 };
 
-export const deleteArtTemplate = (id: string) => {
-    const library = getArtLibrary();
-    const filtered = library.filter(t => t.id !== id);
-    localStorage.setItem(STORAGE_KEY_ART, JSON.stringify(filtered));
+export const getArtLibrary = async (): Promise<ArtTemplate[]> => {
+    return await db.art.toArray();
 };
