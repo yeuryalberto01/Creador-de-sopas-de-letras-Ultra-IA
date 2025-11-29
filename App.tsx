@@ -1,14 +1,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { generateWordListAI, generateThemeAI, generatePuzzleBackground, PROVIDER_PRESETS, testApiConnection } from './services/aiService';
+import { generateWordListAI, generateThemeAI, generatePuzzleBackground, PROVIDER_PRESETS, testApiConnection, GEMINI_MODELS, DEEPSEEK_MODELS, GROK_MODELS, OPENAI_MODELS } from './services/aiService';
 import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { loadSettings, saveSettings, savePuzzleToLibrary, deletePuzzleFromLibrary, getLibrary, saveArtTemplate, deleteArtTemplate, createBookStack, addPuzzleToStack, deleteBookStack, removePuzzleFromStack, resetLibrary, getBookStacks, getArtLibrary, DEFAULT_SETTINGS } from './services/storageService';
 import PuzzleSheet from './components/PuzzleSheet';
 import { GlassCard } from './components/ui/GlassCard';
 import { Toast, ToastType } from './components/ui/Toast';
-import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate, PuzzleMargins, BookStack } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw, Book, Plus, FileJson, Library, ChevronDown, ChevronUp, Layers, Eye, Info } from 'lucide-react';
+import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate, PuzzleMargins, BookStack, ImageFilters } from './types';
+import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw, Book, Plus, FileJson, Library, ChevronDown, ChevronUp, Layers, Eye, Info, Sliders } from 'lucide-react';
+import { ArtStudio } from './components/ArtStudio';
 
 // --- CONSTANTES DE DIFICULTAD ---
 const DIFFICULTY_PRESETS = {
@@ -397,10 +398,17 @@ const ProviderSettingsForm = ({
                     <label className="block text-xs text-slate-400 mb-1 font-bold">Modelo</label>
                     <input
                         type="text"
+                        list="model-suggestions"
                         value={settings.modelName}
                         onChange={(e) => onUpdate({ ...settings, modelName: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-slate-300 focus:border-indigo-500 outline-none"
                     />
+                    <datalist id="model-suggestions">
+                        {selectedPreset === 'gemini' && GEMINI_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        {selectedPreset === 'deepseek' && DEEPSEEK_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        {selectedPreset === 'grok' && GROK_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        {selectedPreset === 'openai' && OPENAI_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </datalist>
                 </div>
                 <div className={selectedPreset === 'gemini' ? 'opacity-50 pointer-events-none' : ''}>
                     <label className="block text-xs text-slate-400 mb-1 font-bold">Base URL</label>
@@ -465,14 +473,19 @@ export default function App() {
     // --- New Expert Features ---
     const [maskShape, setMaskShape] = useState<ShapeType>('SQUARE');
     const [fontType, setFontType] = useState<FontType>('CLASSIC');
+    const [designTheme, setDesignTheme] = useState<'minimal' | 'classic' | 'kids' | 'modern'>('modern'); // New Theme State
+    const [isManualTheme, setIsManualTheme] = useState(false); // Track if user manually selected theme
+    const [showBorders, setShowBorders] = useState(true); // New: Border Toggle
     const [hiddenMessage, setHiddenMessage] = useState('');
     const [margins, setMargins] = useState<PuzzleMargins>({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
 
     // --- Art Features ---
     const [backgroundImage, setBackgroundImage] = useState<string | undefined>(undefined);
     const [backgroundStyle, setBackgroundStyle] = useState<'bw' | 'color'>('bw');
+    const [backgroundFilters, setBackgroundFilters] = useState<ImageFilters | undefined>(undefined); // New Filter State
     const [overlayOpacity, setOverlayOpacity] = useState(0.85);
     const [textOverlayOpacity, setTextOverlayOpacity] = useState(0.9);
+    const [templateId, setTemplateId] = useState<string>('classic'); // New Template State
 
     const [isArtActive, setIsArtActive] = useState(false);
     const [artPrompt, setArtPrompt] = useState('');
@@ -511,6 +524,22 @@ export default function App() {
             const preset = DIFFICULTY_PRESETS[newDifficulty];
             setGridSize(preset.defaultSize);
             setGridRows(preset.defaultSize);
+        }
+
+        // Smart Theme Logic: Auto-select theme based on difficulty
+        // Smart Theme Logic: Auto-select theme based on difficulty ONLY if not manually overridden
+        if (!isManualTheme) {
+            switch (newDifficulty) {
+                case Difficulty.EASY:
+                    setDesignTheme('kids');
+                    break;
+                case Difficulty.MEDIUM:
+                    setDesignTheme('modern');
+                    break;
+                case Difficulty.HARD:
+                    setDesignTheme('classic');
+                    break;
+            }
         }
     };
 
@@ -589,31 +618,14 @@ export default function App() {
         }
     };
 
-    const handleGenerateArt = async () => {
-        if (!artPrompt) return;
-        setIsGeneratingArt(true);
-        try {
-            const bgBase64 = await generatePuzzleBackground(settings.designAI, artPrompt, backgroundStyle);
-            setBackgroundImage(bgBase64);
-            setIsArtActive(true);
-            // Default opacity settings for new art
-            setOverlayOpacity(0.85);
-            setTextOverlayOpacity(0.9);
-
-            const newTemplate: ArtTemplate = {
-                id: crypto.randomUUID(),
-                name: artPrompt.slice(0, 20),
-                prompt: artPrompt,
-                imageBase64: bgBase64,
-                style: backgroundStyle,
-                createdAt: Date.now()
-            };
-            await saveArtTemplate(newTemplate);
-        } catch (e: any) {
-            showToast("Error generando arte: " + e.message, 'error');
-        } finally {
-            setIsGeneratingArt(false);
-        }
+    const handleArtApply = (image: string, filters: ImageFilters, newTemplateId?: string) => {
+        setBackgroundImage(image);
+        setBackgroundFilters(filters);
+        if (newTemplateId) setTemplateId(newTemplateId);
+        setIsArtActive(true);
+        // Default opacity settings for new art if not already set
+        if (overlayOpacity === 0.85) setOverlayOpacity(0.85);
+        if (textOverlayOpacity === 0.9) setTextOverlayOpacity(0.9);
     };
 
     const executeSave = async () => {
@@ -631,8 +643,8 @@ export default function App() {
             title, headerLeft, headerRight, footerText, pageNumber,
             difficulty, gridSize, gridHeight: gridRows, words: wordList,
             showSolution, styleMode, themeData, maskShape, hiddenMessage,
-            fontType, margins,
-            backgroundImage, backgroundStyle, overlayOpacity, textOverlayOpacity
+            fontType, margins, designTheme, showBorders, templateId, // Save showBorders and templateId
+            backgroundImage, backgroundStyle, backgroundFilters, overlayOpacity, textOverlayOpacity
         };
 
         try {
@@ -722,6 +734,7 @@ export default function App() {
             }
 
             setFontType(config.fontType || 'CLASSIC');
+            setDesignTheme(config.designTheme || 'modern'); // Restore designTheme
 
             if (config.margins) {
                 setMargins({ ...config.margins });
@@ -729,9 +742,12 @@ export default function App() {
                 setMargins({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
             }
 
+            setTemplateId(config.templateId || 'classic'); // Restore Template ID
+
             // 5. Restore Art / Background
             setBackgroundImage(config.backgroundImage);
             setBackgroundStyle(config.backgroundStyle || 'bw');
+            setBackgroundFilters(config.backgroundFilters); // Restore Filters
             setIsArtActive(!!config.backgroundImage);
             setOverlayOpacity(config.overlayOpacity ?? 0.85);
             setTextOverlayOpacity(config.textOverlayOpacity ?? 0.9);
@@ -830,6 +846,28 @@ export default function App() {
                 setIsExportingPDF(false);
             });
         }, 500);
+    };
+
+    const handleExportImage = () => {
+        const element = document.getElementById('puzzle-sheet');
+        if (!element || !(window as any).html2canvas) return;
+
+        showToast("Generando imagen de alta resolución...", "info");
+
+        (window as any).html2canvas(element, {
+            scale: 3, // High resolution
+            useCORS: true,
+            backgroundColor: null // Transparent if possible, or white
+        }).then((canvas: HTMLCanvasElement) => {
+            const link = document.createElement('a');
+            link.download = `SopaLetras_${title.replace(/\s+/g, '_')}_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast("Imagen descargada correctamente.", "success");
+        }).catch((err: any) => {
+            console.error("Export error:", err);
+            showToast("Error al exportar imagen.", "error");
+        });
     };
 
     const handleExportBookJson = (stack: BookStack) => {
@@ -989,6 +1027,17 @@ export default function App() {
                                         />
                                     </div>
                                 </div>
+
+                                {/* Border Toggle */}
+                                <div className="flex items-center justify-between bg-slate-800 p-2 rounded-lg">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Mostrar Bordes</label>
+                                    <button
+                                        onClick={() => setShowBorders(!showBorders)}
+                                        className={`w-8 h-4 rounded-full transition-colors relative ${showBorders ? 'bg-indigo-500' : 'bg-slate-700'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${showBorders ? 'left-4.5 translate-x-1' : 'left-0.5'}`} />
+                                    </button>
+                                </div>
                             </div>
                         </section>
 
@@ -1078,82 +1127,86 @@ export default function App() {
                                 </button>
                             </div>
 
-                            <div className="space-y-2 pt-2 border-t border-slate-800/50">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Art Studio (IA)</label>
-                                    <button onClick={() => setShowArtStudio(true)} className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                                        <FolderOpen className="w-3 h-3" /> Galería
-                                    </button>
+                            {/* New Design Theme Selector */}
+                            <div className="space-y-1 pt-2 border-t border-slate-800/50">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Tema Visual</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {(['modern', 'classic', 'kids', 'minimal'] as const).map(theme => (
+                                        <button
+                                            key={theme}
+                                            onClick={() => { setDesignTheme(theme); setIsManualTheme(true); }}
+                                            className={`text-[10px] py-1.5 rounded border capitalize transition-all ${designTheme === theme
+                                                ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
+                                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                                }`}
+                                        >
+                                            {theme}
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={artPrompt}
-                                        onChange={(e) => setArtPrompt(e.target.value)}
-                                        placeholder="Describe el fondo (ej: Espacio)..."
-                                        className="flex-1 bg-slate-900 border border-slate-700 rounded-l-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-500"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerateArt()}
-                                    />
-                                    <div className="flex flex-col border-y border-r border-slate-700 bg-slate-800 px-1 justify-center">
-                                        <button onClick={() => setBackgroundStyle('bw')} className={`text-[8px] ${backgroundStyle === 'bw' ? 'text-white font-bold' : 'text-slate-500'}`}>B/N</button>
-                                        <button onClick={() => setBackgroundStyle('color')} className={`text-[8px] ${backgroundStyle === 'color' ? 'text-indigo-400 font-bold' : 'text-slate-500'}`}>COL</button>
-                                    </div>
-                                    <button
-                                        onClick={handleGenerateArt}
-                                        disabled={isGeneratingArt || !artPrompt}
-                                        className="bg-pink-600 hover:bg-pink-500 px-3 rounded-r-lg text-white disabled:opacity-50"
-                                    >
-                                        {isGeneratingArt ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
-                                    </button>
-                                </div>
-
-                                {/* New: Design Controls when Image Active */}
-                                {backgroundImage && (
-                                    <div className="space-y-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700 mt-2">
-                                        <div className="relative group w-full h-16 bg-slate-900 rounded-lg overflow-hidden border border-slate-600">
-                                            <img src={backgroundImage} className="w-full h-full object-cover opacity-70" alt="bg" />
-                                            <button
-                                                onClick={() => setBackgroundImage(undefined)}
-                                                className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-all font-xs font-bold uppercase tracking-wider"
-                                            >
-                                                <Eraser className="w-4 h-4 mr-1" /> Quitar Fondo
-                                            </button>
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-[10px] text-slate-400">
-                                                <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Opacidad Grilla</span>
-                                                <span>{Math.round(overlayOpacity * 100)}%</span>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min="0" max="1" step="0.05"
-                                                value={overlayOpacity}
-                                                onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
-                                                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1 border-t border-slate-700 pt-2">
-                                            <div className="flex justify-between text-[10px] text-slate-400">
-                                                <span className="flex items-center gap-1"><Type className="w-3 h-3" /> Opacidad Textos</span>
-                                                <span>{Math.round(textOverlayOpacity * 100)}%</span>
-                                            </div>
-                                            <input
-                                                type="range"
-                                                min="0" max="1" step="0.05"
-                                                value={textOverlayOpacity}
-                                                onChange={(e) => setTextOverlayOpacity(parseFloat(e.target.value))}
-                                                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                                            />
-                                            <div className="flex justify-between text-[8px] text-slate-500 px-0.5">
-                                                <span>Transparente</span>
-                                                <span>Sólido</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
+
+                            <div className="space-y-2 pt-2 border-t border-slate-800/50">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Art Studio (IA)</label>
+                                <button
+                                    onClick={() => setShowArtStudio(true)}
+                                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2 transition-all group"
+                                >
+                                    <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
+                                    Abrir Art Studio
+                                </button>
+                                <p className="text-[10px] text-slate-500 text-center">
+                                    Genera, sube y edita imágenes de fondo.
+                                </p>
+                            </div>
+
+                            {/* New: Design Controls when Image Active */}
+                            {backgroundImage && (
+                                <div className="space-y-3 bg-slate-800/50 p-2 rounded-lg border border-slate-700 mt-2">
+                                    <div className="relative group w-full h-16 bg-slate-900 rounded-lg overflow-hidden border border-slate-600">
+                                        <img src={backgroundImage} className="w-full h-full object-cover opacity-70" alt="bg" />
+                                        <button
+                                            onClick={() => setBackgroundImage(undefined)}
+                                            className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-all font-xs font-bold uppercase tracking-wider"
+                                        >
+                                            <Eraser className="w-4 h-4 mr-1" /> Quitar Fondo
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-[10px] text-slate-400">
+                                            <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Opacidad Grilla</span>
+                                            <span>{Math.round(overlayOpacity * 100)}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0" max="1" step="0.05"
+                                            value={overlayOpacity}
+                                            onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1 border-t border-slate-700 pt-2">
+                                        <div className="flex justify-between text-[10px] text-slate-400">
+                                            <span className="flex items-center gap-1"><Type className="w-3 h-3" /> Opacidad Textos</span>
+                                            <span>{Math.round(textOverlayOpacity * 100)}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0" max="1" step="0.05"
+                                            value={textOverlayOpacity}
+                                            onChange={(e) => setTextOverlayOpacity(parseFloat(e.target.value))}
+                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                        />
+                                        <div className="flex justify-between text-[8px] text-slate-500 px-0.5">
+                                            <span>Transparente</span>
+                                            <span>Sólido</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
 
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Tipografía</label>
@@ -1212,6 +1265,7 @@ export default function App() {
                                     value={margins.left}
                                     max={3.0}
                                     onChange={(val) => setMargins({ ...margins, left: val })}
+
                                 />
                                 <MarginControl
                                     label="Derecho"
@@ -1221,7 +1275,6 @@ export default function App() {
                                 />
                             </div>
                         </section>
-
                     </div>
                 </div>
 
@@ -1250,31 +1303,39 @@ export default function App() {
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none z-0"></div>
 
                 {/* Top Toolbar - Floating Fixed */}
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-full border border-slate-600 flex items-center gap-2 shadow-xl z-40 pointer-events-auto transition-transform hover:scale-105">
-                    <Tooltip text="Mostrar/Ocultar Solución" position="bottom">
-                        <button
-                            onClick={() => setShowSolution(!showSolution)}
-                            className={`p-2 rounded-full transition-all ${showSolution ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
-                        >
-                            <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                    </Tooltip>
-                    <div className="w-px h-6 bg-slate-600 mx-1"></div>
-                    <Tooltip text="Exportar a PDF" position="bottom">
-                        <button
-                            onClick={handleExportPDF}
-                            disabled={isExportingPDF}
-                            className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
-                        >
-                            {isExportingPDF ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
-                        </button>
-                    </Tooltip>
-                </div>
+                < div className="absolute top-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-md p-2 rounded-xl border border-slate-600 flex items-center gap-3 shadow-xl z-40 pointer-events-auto transition-transform hover:scale-105" >
+                    <button
+                        onClick={() => setShowSolution(!showSolution)}
+                        className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-bold text-sm ${showSolution ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white'}`}
+                    >
+                        <CheckCircle2 className="w-4 h-4" />
+                        {showSolution ? 'Ocultar Solución' : 'Ver Solución'}
+                    </button>
+
+                    <div className="w-px h-8 bg-slate-600 mx-1"></div>
+
+                    <button
+                        onClick={handleExportPDF}
+                        disabled={isExportingPDF}
+                        className="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-2 font-bold text-sm"
+                    >
+                        {isExportingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                        PDF
+                    </button>
+
+                    <button
+                        onClick={handleExportImage}
+                        className="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 font-bold text-sm"
+                    >
+                        <Image className="w-4 h-4" />
+                        Imagen
+                    </button>
+                </div >
 
                 {/* Scrollable Canvas Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full flex flex-col items-center pt-24 pb-20 px-8 relative z-10">
+                < div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full flex flex-col items-center pt-24 pb-20 px-8 relative z-10" >
                     {/* Paper Container */}
-                    <div className="relative scale-[0.85] xl:scale-100 transition-transform duration-500 shadow-2xl origin-top">
+                    <div id="puzzle-sheet" className="relative scale-[0.85] xl:scale-100 transition-transform duration-500 shadow-2xl origin-top">
                         <PuzzleSheet
                             key={renderKey} // Force Re-Render when puzzle loaded
                             puzzle={generatedPuzzle}
@@ -1282,445 +1343,472 @@ export default function App() {
                                 title, headerLeft, headerRight, footerText, pageNumber,
                                 difficulty, gridSize, gridHeight: gridRows, words: wordList,
                                 showSolution, styleMode, themeData, maskShape, hiddenMessage,
-                                fontType, margins,
-                                backgroundImage, backgroundStyle, overlayOpacity, textOverlayOpacity
+                                showSolution, styleMode, themeData, maskShape, hiddenMessage,
+                                fontType, margins, designTheme, templateId, // Pass designTheme and templateId
+                                backgroundImage, backgroundStyle, backgroundFilters, overlayOpacity, textOverlayOpacity
                             }}
                         />
-                    </div>
-                </div>
-            </main>
+                    </div >
+
+
+
+                </div >
+            </main >
+
+            <ArtStudio
+                isOpen={showArtStudio}
+                onClose={() => setShowArtStudio(false)}
+                currentImage={backgroundImage}
+                currentFilters={backgroundFilters}
+                onApply={handleArtApply}
+                aiSettings={settings.designAI}
+            />
 
             {/* --- MODALS --- */}
 
             {/* Settings Modal */}
-            {showSettingsModal && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-slate-900 text-white w-full max-w-2xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <Settings2 className="w-6 h-6 text-indigo-500" /> Configuración de IA
-                            </h2>
-                            <button onClick={() => setShowSettingsModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
-                        </div>
+            {
+                showSettingsModal && (
+                    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-900 text-white w-full max-w-2xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <Settings2 className="w-6 h-6 text-indigo-500" /> Configuración de IA
+                                </h2>
+                                <button onClick={() => setShowSettingsModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
+                            </div>
 
-                        <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-                            <ProviderSettingsForm
-                                title="Inteligencia Lógica (Generación de Palabras)"
-                                icon={BrainCircuit}
-                                settings={settings.logicAI}
-                                onUpdate={(s) => setSettings({ ...settings, logicAI: s })}
-                            />
-                            <div className="w-full h-px bg-slate-800"></div>
-                            <ProviderSettingsForm
-                                title="Inteligencia Visual (Colores y Estilos)"
-                                icon={Palette}
-                                settings={settings.designAI}
-                                onUpdate={(s) => setSettings({ ...settings, designAI: s })}
-                            />
-                        </div>
+                            <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+                                <ProviderSettingsForm
+                                    title="Inteligencia Lógica (Generación de Palabras)"
+                                    icon={BrainCircuit}
+                                    settings={settings.logicAI}
+                                    onUpdate={(s) => setSettings({ ...settings, logicAI: s })}
+                                />
+                                <div className="w-full h-px bg-slate-800"></div>
+                                <ProviderSettingsForm
+                                    title="Inteligencia Visual (Colores y Estilos)"
+                                    icon={Palette}
+                                    settings={settings.designAI}
+                                    onUpdate={(s) => setSettings({ ...settings, designAI: s })}
+                                />
+                            </div>
 
-                        <div className="p-4 border-t border-slate-700 bg-slate-950 flex justify-end gap-2">
-                            <button
-                                onClick={() => { saveSettings(settings); setShowSettingsModal(false); }}
-                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-all"
-                            >
-                                Guardar Cambios
-                            </button>
+                            <div className="p-4 border-t border-slate-700 bg-slate-950 flex justify-end gap-2">
+                                <button
+                                    onClick={() => { saveSettings(settings); setShowSettingsModal(false); }}
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg transition-all"
+                                >
+                                    Guardar Cambios
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Save Options Modal */}
-            {showSaveModal && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-slate-900 text-white w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                            <h2 className="text-lg font-bold flex items-center gap-2">
-                                <Save className="w-5 h-5 text-emerald-400" /> Guardar Proyecto
-                            </h2>
-                            <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white" /></button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
-                                    <input
-                                        type="radio"
-                                        name="saveOption"
-                                        checked={saveOption === 'single'}
-                                        onChange={() => setSaveOption('single')}
-                                        className="accent-indigo-500"
-                                    />
-                                    <div className="flex-1">
-                                        <div className="font-bold text-sm">Guardar Individual</div>
-                                        <div className="text-[10px] text-slate-400">Guarda como puzzle suelto en la biblioteca.</div>
-                                    </div>
-                                </label>
-
-                                {/* New Input for Single Save Name */}
-                                {saveOption === 'single' && (
-                                    <div className="ml-6 mt-2 animate-in fade-in slide-in-from-top-2">
-                                        <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Nombre del Archivo (En Biblioteca)</label>
-                                        <input
-                                            type="text"
-                                            value={saveName}
-                                            onChange={(e) => setSaveName(e.target.value)}
-                                            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none"
-                                            placeholder="Ej: Biología Unidad 1"
-                                        />
-                                        <p className="text-[10px] text-slate-500 mt-1">Este nombre identificará tu trabajo guardado.</p>
-                                    </div>
-                                )}
-
-                                <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
-                                    <input
-                                        type="radio"
-                                        name="saveOption"
-                                        checked={saveOption === 'existing_book'}
-                                        onChange={() => setSaveOption('existing_book')}
-                                        className="accent-indigo-500"
-                                        disabled={bookStacks.length === 0}
-                                    />
-                                    <div className={`flex-1 ${bookStacks.length === 0 ? 'opacity-50' : ''}`}>
-                                        <div className="font-bold text-sm">Añadir a Libro Existente</div>
-                                        <div className="text-[10px] text-slate-400">Agrega una página a una colección.</div>
-                                    </div>
-                                </label>
-
-                                {saveOption === 'existing_book' && bookStacks.length > 0 && (
-                                    <div className="ml-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <select
-                                            value={selectedBookId}
-                                            onChange={(e) => setSelectedBookId(e.target.value)}
-                                            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                                        >
-                                            <option value="">-- Seleccionar Libro --</option>
-                                            {bookStacks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.puzzles.length} págs)</option>)}
-                                        </select>
-                                    </div>
-                                )}
-
-                                <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
-                                    <input
-                                        type="radio"
-                                        name="saveOption"
-                                        checked={saveOption === 'new_book'}
-                                        onChange={() => setSaveOption('new_book')}
-                                        className="accent-indigo-500"
-                                    />
-                                    <div className="flex-1">
-                                        <div className="font-bold text-sm">Crear Nuevo Libro</div>
-                                        <div className="text-[10px] text-slate-400">Inicia una nueva colección de sopas.</div>
-                                    </div>
-                                </label>
-
-                                {saveOption === 'new_book' && (
-                                    <div className="ml-6 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <input
-                                            type="text"
-                                            placeholder="Nombre del Libro (ej. Animales)"
-                                            value={newBookName}
-                                            onChange={(e) => setNewBookName(e.target.value)}
-                                            className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
-                                        />
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-[10px] text-slate-400">Meta de Páginas:</label>
-                                            <input
-                                                type="number"
-                                                value={newBookTarget}
-                                                onChange={(e) => setNewBookTarget(parseInt(e.target.value))}
-                                                className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white text-center"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
+            {
+                showSaveModal && (
+                    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-900 text-white w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
+                                <h2 className="text-lg font-bold flex items-center gap-2">
+                                    <Save className="w-5 h-5 text-emerald-400" /> Guardar Proyecto
+                                </h2>
+                                <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white" /></button>
                             </div>
-                        </div>
 
-                        <div className="p-4 border-t border-slate-700 bg-slate-950 flex justify-end gap-2">
-                            <button
-                                onClick={executeSave}
-                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition-all"
-                            >
-                                Confirmar Guardado
-                            </button>
+                            <div className="p-6 space-y-4">
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                        <input
+                                            type="radio"
+                                            name="saveOption"
+                                            checked={saveOption === 'single'}
+                                            onChange={() => setSaveOption('single')}
+                                            className="accent-indigo-500"
+                                        />
+                                        <div className="flex-1">
+                                            <div className="font-bold text-sm">Guardar Individual</div>
+                                            <div className="text-[10px] text-slate-400">Guarda como puzzle suelto en la biblioteca.</div>
+                                        </div>
+                                    </label>
+
+                                    {/* New Input for Single Save Name */}
+                                    {saveOption === 'single' && (
+                                        <div className="ml-6 mt-2 animate-in fade-in slide-in-from-top-2">
+                                            <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Nombre del Archivo (En Biblioteca)</label>
+                                            <input
+                                                type="text"
+                                                value={saveName}
+                                                onChange={(e) => setSaveName(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none"
+                                                placeholder="Ej: Biología Unidad 1"
+                                            />
+                                            <p className="text-[10px] text-slate-500 mt-1">Este nombre identificará tu trabajo guardado.</p>
+                                        </div>
+                                    )}
+
+                                    <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                        <input
+                                            type="radio"
+                                            name="saveOption"
+                                            checked={saveOption === 'existing_book'}
+                                            onChange={() => setSaveOption('existing_book')}
+                                            className="accent-indigo-500"
+                                            disabled={bookStacks.length === 0}
+                                        />
+                                        <div className={`flex-1 ${bookStacks.length === 0 ? 'opacity-50' : ''}`}>
+                                            <div className="font-bold text-sm">Añadir a Libro Existente</div>
+                                            <div className="text-[10px] text-slate-400">Agrega una página a una colección.</div>
+                                        </div>
+                                    </label>
+
+                                    {saveOption === 'existing_book' && bookStacks.length > 0 && (
+                                        <div className="ml-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <select
+                                                value={selectedBookId}
+                                                onChange={(e) => setSelectedBookId(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
+                                            >
+                                                <option value="">-- Seleccionar Libro --</option>
+                                                {bookStacks.map(b => <option key={b.id} value={b.id}>{b.name} ({b.puzzles.length} págs)</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors">
+                                        <input
+                                            type="radio"
+                                            name="saveOption"
+                                            checked={saveOption === 'new_book'}
+                                            onChange={() => setSaveOption('new_book')}
+                                            className="accent-indigo-500"
+                                        />
+                                        <div className="flex-1">
+                                            <div className="font-bold text-sm">Crear Nuevo Libro</div>
+                                            <div className="text-[10px] text-slate-400">Inicia una nueva colección de sopas.</div>
+                                        </div>
+                                    </label>
+
+                                    {saveOption === 'new_book' && (
+                                        <div className="ml-6 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <input
+                                                type="text"
+                                                placeholder="Nombre del Libro (ej. Animales)"
+                                                value={newBookName}
+                                                onChange={(e) => setNewBookName(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-[10px] text-slate-400">Meta de Páginas:</label>
+                                                <input
+                                                    type="number"
+                                                    value={newBookTarget}
+                                                    onChange={(e) => setNewBookTarget(parseInt(e.target.value))}
+                                                    className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white text-center"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t border-slate-700 bg-slate-950 flex justify-end gap-2">
+                                <button
+                                    onClick={executeSave}
+                                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition-all"
+                                >
+                                    Confirmar Guardado
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Library Modal */}
-            {showLibraryModal && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-slate-900 text-white w-full max-w-4xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden h-[80vh] flex flex-col">
-                        <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
-                            <h2 className="text-xl font-bold flex items-center gap-2">
-                                <FolderOpen className="w-6 h-6 text-amber-500" /> Biblioteca de Puzzles
-                            </h2>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={handleResetLibrary}
-                                    className="bg-red-900/40 hover:bg-red-900 border border-red-800 text-red-200 px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-2"
-                                >
-                                    <Trash2 className="w-4 h-4" /> Resetear Todo
-                                </button>
-                                <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
-                            </div>
-                        </div>
-
-                        {/* Tabs */}
-                        <div className="flex border-b border-slate-700 bg-slate-800/50">
-                            <button
-                                onClick={() => setActiveLibraryTab('puzzles')}
-                                className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'puzzles' ? 'border-indigo-500 text-indigo-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
-                            >
-                                <FileJson className="w-4 h-4" /> Puzzles Sueltos ({libraryPuzzles.length})
-                            </button>
-                            <button
-                                onClick={() => setActiveLibraryTab('books')}
-                                className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'books' ? 'border-amber-500 text-amber-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
-                            >
-                                <Book className="w-4 h-4" /> Libros / Colecciones ({bookStacks.length})
-                            </button>
-                        </div>
-
-                        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-900">
-
-                            {/* Tab: Puzzles */}
-                            {activeLibraryTab === 'puzzles' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {libraryPuzzles.length === 0 && (
-                                        <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
-                                            <FolderOpen className="w-12 h-12 mb-2 opacity-20" />
-                                            No hay puzzles guardados aún.
-                                        </div>
-                                    )}
-                                    {libraryPuzzles.map((p) => (
-                                        <div key={p.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h3 className="font-bold text-white truncate pr-6" title={p.name}>{p.name}</h3>
-                                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${p.config.difficulty === 'Fácil' ? 'bg-emerald-500/20 text-emerald-400' :
-                                                    p.config.difficulty === 'Intermedio' ? 'bg-blue-500/20 text-blue-400' :
-                                                        'bg-purple-500/20 text-purple-400'
-                                                    }`}>{p.config.difficulty}</span>
-                                            </div>
-                                            <div className="text-xs text-slate-400 mb-4 font-mono">
-                                                Creado: {new Date(p.createdAt).toLocaleDateString()}
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => handleLoadPuzzleAsync(p)}
-                                                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded text-xs font-bold transition-colors"
-                                                >
-                                                    Cargar
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeletePuzzle(p.id, p.name)}
-                                                    className="px-3 bg-slate-700 hover:bg-red-900/50 hover:text-red-400 rounded text-xs transition-colors"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+            {
+                showLibraryModal && (
+                    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-900 text-white w-full max-w-4xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden h-[80vh] flex flex-col">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <FolderOpen className="w-6 h-6 text-amber-500" /> Biblioteca de Puzzles
+                                </h2>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleResetLibrary}
+                                        className="bg-red-900/40 hover:bg-red-900 border border-red-800 text-red-200 px-3 py-1 rounded text-xs font-bold transition-all flex items-center gap-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" /> Resetear Todo
+                                    </button>
+                                    <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
                                 </div>
-                            )}
+                            </div>
 
+                            {/* Tabs */}
+                            <div className="flex border-b border-slate-700 bg-slate-800/50">
+                                <button
+                                    onClick={() => setActiveLibraryTab('puzzles')}
+                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'puzzles' ? 'border-indigo-500 text-indigo-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                                >
+                                    <FileJson className="w-4 h-4" /> Puzzles Sueltos ({libraryPuzzles.length})
+                                </button>
+                                <button
+                                    onClick={() => setActiveLibraryTab('books')}
+                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'books' ? 'border-amber-500 text-amber-400 bg-slate-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                                >
+                                    <Book className="w-4 h-4" /> Libros / Colecciones ({bookStacks.length})
+                                </button>
+                            </div>
 
-                            {/* Tab: Books */}
-                            {activeLibraryTab === 'books' && (
-                                <div className="space-y-4">
-                                    {bookStacks.length === 0 && (
-                                        <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
-                                            <Book className="w-12 h-12 mb-2 opacity-20" />
-                                            No hay libros creados. Usa la opción "Guardar &gt; Crear Nuevo Libro".
-                                        </div>
-                                    )}
-                                    {bookStacks.map((book) => (
-                                        <div key={book.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
-                                            <div className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-amber-500/20 p-2 rounded text-amber-400">
-                                                        <Book className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-bold text-lg text-white">{book.name}</h3>
-                                                        <div className="text-xs text-slate-400 flex items-center gap-2">
-                                                            <span>Progreso: {book.puzzles.length} / {book.targetCount} páginas</span>
-                                                            <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                                                <div
-                                                                    className="h-full bg-amber-500 transition-all"
-                                                                    style={{ width: `${Math.min(100, (book.puzzles.length / book.targetCount) * 100)}%` }}
-                                                                ></div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-900">
+
+                                {/* Tab: Puzzles */}
+                                {activeLibraryTab === 'puzzles' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {libraryPuzzles.length === 0 && (
+                                            <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
+                                                <FolderOpen className="w-12 h-12 mb-2 opacity-20" />
+                                                No hay puzzles guardados aún.
+                                            </div>
+                                        )}
+                                        {libraryPuzzles.map((p) => (
+                                            <div key={p.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h3 className="font-bold text-white truncate pr-6" title={p.name}>{p.name}</h3>
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${p.config.difficulty === 'Fácil' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                        p.config.difficulty === 'Intermedio' ? 'bg-blue-500/20 text-blue-400' :
+                                                            'bg-purple-500/20 text-purple-400'
+                                                        }`}>{p.config.difficulty}</span>
                                                 </div>
-                                                <div className="flex items-center gap-2">
+                                                <div className="text-xs text-slate-400 mb-4 font-mono">
+                                                    Creado: {new Date(p.createdAt).toLocaleDateString()}
+                                                </div>
+                                                <div className="flex gap-2">
                                                     <button
-                                                        onClick={() => handleExportBookJson(book)}
-                                                        className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"
-                                                        title="Descargar JSON del Libro"
+                                                        onClick={() => handleLoadPuzzleAsync(p)}
+                                                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded text-xs font-bold transition-colors"
                                                     >
-                                                        <Download className="w-4 h-4" />
+                                                        Cargar
                                                     </button>
                                                     <button
-                                                        onClick={() => {
-                                                            if (confirm(`¿Eliminar libro "${book.name}" y todas sus páginas?`)) {
-                                                                deleteBookStack(book.id);
-                                                            }
-                                                        }}
-                                                        className="p-2 hover:bg-red-900/30 rounded-lg text-slate-400 hover:text-red-400"
+                                                        onClick={() => handleDeletePuzzle(p.id, p.name)}
+                                                        className="px-3 bg-slate-700 hover:bg-red-900/50 hover:text-red-400 rounded text-xs transition-colors"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                )}
 
-                                            {/* Pages List */}
-                                            {book.puzzles.length > 0 && (
-                                                <div className="bg-slate-900/50 p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                                                    {book.puzzles.map((page, idx) => (
-                                                        <div key={page.id} className="flex items-center justify-between p-2 bg-slate-800 rounded border border-slate-700/50 text-xs">
-                                                            <div className="flex items-center gap-2 truncate">
-                                                                <span className="font-mono text-slate-500 w-5">#{idx + 1}</span>
-                                                                <span className="truncate max-w-[100px]" title={page.name}>{page.name}</span>
-                                                            </div>
-                                                            <div className="flex gap-1">
-                                                                <button
-                                                                    onClick={() => handleLoadPuzzle(page)}
-                                                                    className="p-1 hover:text-indigo-400"
-                                                                    title="Editar"
-                                                                >
-                                                                    <Eye className="w-3 h-3" />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        if (confirm('¿Quitar página del libro?')) {
-                                                                            removePuzzleFromStack(book.id, page.id);
-                                                                        }
-                                                                    }}
-                                                                    className="p-1 hover:text-red-400"
-                                                                >
-                                                                    <X className="w-3 h-3" />
-                                                                </button>
+
+                                {/* Tab: Books */}
+                                {activeLibraryTab === 'books' && (
+                                    <div className="space-y-4">
+                                        {bookStacks.length === 0 && (
+                                            <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
+                                                <Book className="w-12 h-12 mb-2 opacity-20" />
+                                                No hay libros creados. Usa la opción "Guardar &gt; Crear Nuevo Libro".
+                                            </div>
+                                        )}
+                                        {bookStacks.map((book) => (
+                                            <div key={book.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+                                                <div className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="bg-amber-500/20 p-2 rounded text-amber-400">
+                                                            <Book className="w-5 h-5" />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-lg text-white">{book.name}</h3>
+                                                            <div className="text-xs text-slate-400 flex items-center gap-2">
+                                                                <span>Progreso: {book.puzzles.length} / {book.targetCount} páginas</span>
+                                                                <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className="h-full bg-amber-500 transition-all"
+                                                                        style={{ width: `${Math.min(100, (book.puzzles.length / book.targetCount) * 100)}%` }}
+                                                                    ></div>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => handleExportBookJson(book)}
+                                                            className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"
+                                                            title="Descargar JSON del Libro"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (confirm(`¿Eliminar libro "${book.name}" y todas sus páginas?`)) {
+                                                                    deleteBookStack(book.id);
+                                                                }
+                                                            }}
+                                                            className="p-2 hover:bg-red-900/30 rounded-lg text-slate-400 hover:text-red-400"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
 
+                                                {/* Pages List */}
+                                                {book.puzzles.length > 0 && (
+                                                    <div className="bg-slate-900/50 p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                                                        {book.puzzles.map((page, idx) => (
+                                                            <div key={page.id} className="flex items-center justify-between p-2 bg-slate-800 rounded border border-slate-700/50 text-xs">
+                                                                <div className="flex items-center gap-2 truncate">
+                                                                    <span className="font-mono text-slate-500 w-5">#{idx + 1}</span>
+                                                                    <span className="truncate max-w-[100px]" title={page.name}>{page.name}</span>
+                                                                </div>
+                                                                <div className="flex gap-1">
+                                                                    <button
+                                                                        onClick={() => handleLoadPuzzle(page)}
+                                                                        className="p-1 hover:text-indigo-400"
+                                                                        title="Editar"
+                                                                    >
+                                                                        <Eye className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (confirm('¿Quitar página del libro?')) {
+                                                                                removePuzzleFromStack(book.id, page.id);
+                                                                            }
+                                                                        }}
+                                                                        className="p-1 hover:text-red-400"
+                                                                    >
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {showDiagnostics && <SystemDiagnostics settings={settings} onClose={() => setShowDiagnostics(false)} />}
 
             {/* Delete Confirmation Modal */}
-            {puzzleToDelete && (
-                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-slate-700">
-                        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                            <AlertTriangle className="w-6 h-6 text-red-500" /> Confirmar Eliminación
-                        </h3>
-                        <p className="text-slate-300 mb-6">
-                            ¿Estás seguro de que deseas eliminar el puzzle <span className="text-white font-bold">"{puzzleToDelete.name}"</span>?
-                            Esta acción no se puede deshacer.
-                        </p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setPuzzleToDelete(null)}
-                                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmDeletePuzzle}
-                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-900/20"
-                            >
-                                Sí, Eliminar
-                            </button>
-                        </div>
-                    </GlassCard>
-                </div>
-            )}
+            {
+                puzzleToDelete && (
+                    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-slate-700">
+                            <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                                <AlertTriangle className="w-6 h-6 text-red-500" /> Confirmar Eliminación
+                            </h3>
+                            <p className="text-slate-300 mb-6">
+                                ¿Estás seguro de que deseas eliminar el puzzle <span className="text-white font-bold">"{puzzleToDelete.name}"</span>?
+                                Esta acción no se puede deshacer.
+                            </p>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setPuzzleToDelete(null)}
+                                    className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmDeletePuzzle}
+                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-900/20"
+                                >
+                                    Sí, Eliminar
+                                </button>
+                            </div>
+                        </GlassCard>
+                    </div>
+                )
+            }
 
             {/* Load Confirmation Modal */}
-            {puzzleToLoad && (
-                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-slate-700">
-                        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                            <Info className="w-6 h-6 text-blue-500" /> Confirmar Carga
-                        </h3>
-                        <p className="text-slate-300 mb-6">
-                            ¿Deseas cargar el puzzle <span className="font-bold text-white">"{puzzleToLoad.name}"</span>?
-                            <br /><br />
-                            <span className="text-yellow-400 text-sm">Cualquier cambio no guardado en el tablero actual se perderá.</span>
-                        </p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setPuzzleToLoad(null)}
-                                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmLoadPuzzle}
-                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
-                            >
-                                <Download className="w-4 h-4" /> Cargar
-                            </button>
-                        </div>
-                    </GlassCard>
-                </div>
-            )}
+            {
+                puzzleToLoad && (
+                    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-slate-700">
+                            <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                                <Info className="w-6 h-6 text-blue-500" /> Confirmar Carga
+                            </h3>
+                            <p className="text-slate-300 mb-6">
+                                ¿Deseas cargar el puzzle <span className="font-bold text-white">"{puzzleToLoad.name}"</span>?
+                                <br /><br />
+                                <span className="text-yellow-400 text-sm">Cualquier cambio no guardado en el tablero actual se perderá.</span>
+                            </p>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setPuzzleToLoad(null)}
+                                    className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmLoadPuzzle}
+                                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20"
+                                >
+                                    <Download className="w-4 h-4" /> Cargar
+                                </button>
+                            </div>
+                        </GlassCard>
+                    </div>
+                )
+            }
 
             {/* Reset Confirmation Modal */}
-            {showResetConfirm && (
-                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-red-500/50">
-                        <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                            <AlertTriangle className="w-6 h-6 text-red-500" /> ⚠️ ZONA DE PELIGRO
-                        </h3>
-                        <p className="text-slate-300 mb-6">
-                            ¿Estás seguro de que quieres <span className="font-bold text-red-400">RESETEAR TODO</span>?
-                            <br /><br />
-                            <span className="text-red-400 text-sm">Esto borrará PERMANENTEMENTE todos tus puzzles, libros y configuraciones guardadas. Esta acción NO se puede deshacer.</span>
-                        </p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowResetConfirm(false)}
-                                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={confirmResetLibrary}
-                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-900/20"
-                            >
-                                <Trash2 className="w-4 h-4" /> SÍ, BORRAR TODO
-                            </button>
-                        </div>
-                    </GlassCard>
-                </div>
-            )}
+            {
+                showResetConfirm && (
+                    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <GlassCard className="max-w-md w-full !p-6 !bg-slate-900 !border-red-500/50">
+                            <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                                <AlertTriangle className="w-6 h-6 text-red-500" /> ⚠️ ZONA DE PELIGRO
+                            </h3>
+                            <p className="text-slate-300 mb-6">
+                                ¿Estás seguro de que quieres <span className="font-bold text-red-400">RESETEAR TODO</span>?
+                                <br /><br />
+                                <span className="text-red-400 text-sm">Esto borrará PERMANENTEMENTE todos tus puzzles, libros y configuraciones guardadas. Esta acción NO se puede deshacer.</span>
+                            </p>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setShowResetConfirm(false)}
+                                    className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmResetLibrary}
+                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-900/20"
+                                >
+                                    <Trash2 className="w-4 h-4" /> SÍ, BORRAR TODO
+                                </button>
+                            </div>
+                        </GlassCard>
+                    </div>
+                )
+            }
 
             {/* Toast Container */}
-            {toast && (
-                <div className="fixed bottom-4 right-4 z-[100]">
-                    <Toast
-                        message={toast.message}
-                        type={toast.type}
-                        onClose={() => setToast(null)}
-                    />
-                </div>
-            )}
-        </div>
+            {
+                toast && (
+                    <div className="fixed bottom-4 right-4 z-[100]">
+                        <Toast
+                            message={toast.message}
+                            type={toast.type}
+                            onClose={() => setToast(null)}
+                        />
+                    </div>
+                )
+            }
+        </div >
     );
 }
+

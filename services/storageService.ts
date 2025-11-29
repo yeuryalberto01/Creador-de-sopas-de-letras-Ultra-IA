@@ -8,12 +8,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     logicAI: {
         provider: 'gemini',
         apiKey: import.meta.env.VITE_API_KEY || process.env.API_KEY || '',
-        modelName: 'gemini-2.5-flash'
+        modelName: 'gemini-2.5-flash',
+        baseUrl: 'http://localhost:8000'
     },
     designAI: {
         provider: 'gemini',
         apiKey: import.meta.env.VITE_API_KEY || process.env.API_KEY || '',
-        modelName: 'gemini-2.5-flash'
+        modelName: 'gemini-2.5-flash',
+        baseUrl: 'http://localhost:8000'
     }
 };
 
@@ -23,7 +25,13 @@ export const loadSettings = async (): Promise<AppSettings> => {
     try {
         const saved = await db.settings.get('global_settings');
         if (saved) {
-            return { ...DEFAULT_SETTINGS, ...saved };
+            // Deep merge to ensure new defaults (like baseUrl) are applied to existing saved settings
+            return {
+                ...DEFAULT_SETTINGS,
+                ...saved,
+                logicAI: { ...DEFAULT_SETTINGS.logicAI, ...(saved.logicAI || {}) },
+                designAI: { ...DEFAULT_SETTINGS.designAI, ...(saved.designAI || {}) }
+            };
         }
         return DEFAULT_SETTINGS;
     } catch (e) {
@@ -34,7 +42,7 @@ export const loadSettings = async (): Promise<AppSettings> => {
 
 export const saveSettings = async (settings: AppSettings) => {
     try {
-        await db.settings.put({ ...settings }, 'global_settings');
+        await db.settings.put({ ...settings, id: 'global_settings' });
     } catch (e) {
         console.error("Failed to save settings", e);
     }

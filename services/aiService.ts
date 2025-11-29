@@ -6,14 +6,13 @@ const USE_BACKEND = true;
 const BACKEND_URL = "http://localhost:8000/api/ai/generate";
 
 // --- Provider Presets ---
-
 export const PROVIDER_PRESETS = {
     gemini: {
         id: 'gemini',
         name: 'Google Gemini',
         providerType: 'gemini',
         baseUrl: '', // Not used for SDK
-        defaultModel: 'gemini-2.5-flash',
+        defaultModel: 'gemini-2.0-flash',
         requiresBaseUrl: false
     },
     deepseek: {
@@ -29,7 +28,7 @@ export const PROVIDER_PRESETS = {
         name: 'xAI (Grok)',
         providerType: 'openai_compatible',
         baseUrl: 'https://api.x.ai/v1',
-        defaultModel: 'grok-4-latest',
+        defaultModel: 'grok-2-latest',
         requiresBaseUrl: false
     },
     openai: {
@@ -57,6 +56,32 @@ export const PROVIDER_PRESETS = {
         requiresBaseUrl: true
     }
 };
+
+export const GEMINI_MODELS = [
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (New)' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Best Reasoning)' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast)' },
+    { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B' }
+];
+
+export const DEEPSEEK_MODELS = [
+    { id: 'deepseek-chat', name: 'DeepSeek V3 (Chat)' },
+    { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoner)' }
+];
+
+export const GROK_MODELS = [
+    { id: 'grok-2-latest', name: 'Grok 2 (Latest)' },
+    { id: 'grok-2-vision-latest', name: 'Grok 2 Vision' },
+    { id: 'grok-beta', name: 'Grok Beta' }
+];
+
+export const OPENAI_MODELS = [
+    { id: 'gpt-4o', name: 'GPT-4o (Omni)' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    { id: 'o1-preview', name: 'o1 Preview' },
+    { id: 'o1-mini', name: 'o1 Mini' }
+];
+
 
 // --- Generic Helpers ---
 
@@ -126,7 +151,7 @@ const callGemini = async (settings: AISettings, prompt: string, schemaType?: any
     }
 
     const response = await ai.models.generateContent({
-        model: settings.modelName || 'gemini-2.5-flash',
+        model: settings.modelName || 'gemini-2.0-flash',
         contents: prompt,
         config: config
     });
@@ -308,80 +333,94 @@ export const generateThemeAI = async (settings: AISettings, topic: string): Prom
     }
 };
 
-/**
- * Generates a background image using Gemini 2.5 Flash Image.
- * Supports Black & White (Line Art) or Color (Vector Frame).
- */
-export const generatePuzzleBackground = async (settings: AISettings, prompt: string, style: 'bw' | 'color'): Promise<string> => {
-    // Requires a Google API Key, can't use generic OpenAI endpoints easily for image gen with this specific setup
-    const apiKey = settings.apiKey || process.env.API_KEY;
-    if (!apiKey) throw new Error("Se requiere API Key de Google para generar imágenes.");
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    // Construct Prompt based on Style - Optimized for Text Overlay with strong Negative Space focus
-    let finalPrompt = "";
-
-    if (style === 'bw') {
-        finalPrompt = `
-            Design a professional coloring book style PAGE BORDER / FRAME about: ${prompt}.
-            
-            CRITICAL LAYOUT RULES:
-            1. The art must be ONLY around the edges (top, bottom, sides) acting as a frame.
-            2. The CENTER (80% of the page area) must be COMPLETELY EMPTY WHITE SPACE.
-            3. Do not place any objects, lines, or textures in the center. It must be blank for text.
-            
-            Style Rules:
-            1. Black and white vector line art ONLY.
-            2. Crisp lines, high contrast.
-            3. No grayscale shading, no gradients.
-            4. Intricate details on edges only.
-            5. Aspect Ratio: Vertical Portrait (3:4).
-        `;
-    } else {
-        // Updated to be structural like BW but in color (Vector/Illustration style)
-        finalPrompt = `
-            Design a professional decorative VECTOR FRAME / BORDER about: ${prompt}.
-            
-            CRITICAL LAYOUT RULES:
-            1. The illustration must be restricted to the edges to form a frame.
-            2. The CENTER must be pure EMPTY WHITE SPACE (Negative Space).
-            3. This is for a document background, so the middle must be clean.
-            
-            Style Rules:
-            1. Style: Clean Flat Vector Art / Sticker Art / Clip Art.
-            2. Use flat, vibrant colors.
-            3. White background.
-            4. DO NOT use watercolor, complex paintings, or photographic styles that fill the page.
-            5. Aspect Ratio: Vertical Portrait (3:4).
-        `;
-    }
+export const enhancePromptAI = async (settings: AISettings, originalPrompt: string): Promise<string> => {
+    const prompt = `
+        Act as a professional prompt engineer for AI Image Generators (Midjourney/DALL-E 3).
+        Enhance this simple description into a detailed, vivid prompt: "${originalPrompt}".
+        Focus on lighting, texture, composition, and mood.
+        Keep it under 40 words. Return ONLY the English prompt text.
+    `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image', // Fast, efficient model
-            contents: {
-                parts: [
-                    { text: finalPrompt }
-                ]
-            },
-            config: {
-                imageConfig: {
-                    aspectRatio: "3:4", // Matches Letter/A4 roughly
-                }
-            }
-        });
-
-        // Extract Image
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:image/png;base64,${part.inlineData.data}`;
-            }
+        let response = "";
+        if (settings.provider === 'gemini') {
+            response = await callGemini(settings, prompt);
+        } else {
+            response = await callOpenAICompatible(settings, prompt, false);
         }
-        throw new Error("No se generó ninguna imagen.");
-
+        return response.replace(/"/g, '').trim();
     } catch (error) {
-        console.error("Image Gen Error:", error);
-        throw error;
+        console.error("Prompt Enhancement Error:", error);
+        return originalPrompt;
     }
+};
+
+/**
+ * Generates a background image using Gemini.
+ * Tries Imagen 3 first, falls back to SVG generation via Text Model if unavailable.
+ */
+export const generatePuzzleBackground = async (settings: AISettings, prompt: string, style: string): Promise<string> => {
+    if (USE_BACKEND) {
+        try {
+            // 1. Try Imagen 3 (Backend)
+            console.log("Attempting Image Generation with Imagen 3 (Backend)...");
+            const response = await fetch("http://localhost:8000/api/ai/generate-image", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.apiKey || ""
+                },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    style: style,
+                    model: 'imagen-3.0-generate-001'
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.image) {
+                    console.log("Imagen 3 Success!");
+                    return data.image;
+                }
+            } else {
+                console.warn("Backend Imagen 3 Failed:", await response.text());
+            }
+
+        } catch (e) {
+            console.error("Backend Imagen 3 Error:", e);
+        }
+
+        try {
+            // 2. Fallback to SVG (Backend)
+            console.log("Attempting SVG Fallback (Backend)...");
+            const response = await fetch("http://localhost:8000/api/ai/generate-svg", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.apiKey || ""
+                },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    style: style
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Backend SVG Error (${response.status}): ${errText}`);
+            }
+
+            const data = await response.json();
+            console.log("SVG Success!");
+            return data.image || "";
+
+        } catch (e: any) {
+            console.error("Backend SVG Call Failed:", e);
+            throw new Error(`Error generando arte (Backend): ${e.message}`);
+        }
+    }
+
+    // Legacy Client-Side Fallback (Should not be reached if USE_BACKEND is true and backend is up)
+    throw new Error("El backend no está disponible para generar imágenes.");
 };

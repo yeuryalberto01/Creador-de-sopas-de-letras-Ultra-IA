@@ -1,5 +1,4 @@
 
-
 export enum Difficulty {
   EASY = 'Fácil',
   MEDIUM = 'Intermedio',
@@ -39,7 +38,7 @@ export interface ArtTemplate {
   name: string;
   prompt: string;
   imageBase64: string;
-  style: 'bw' | 'color';
+  style: string;
   createdAt: number;
 }
 
@@ -48,6 +47,14 @@ export interface PuzzleMargins {
   bottom: number; // Inches
   left: number;   // Inches
   right: number;  // Inches
+}
+
+export interface ImageFilters {
+  brightness: number; // 0-200, default 100
+  contrast: number;   // 0-200, default 100
+  grayscale: number;  // 0-100, default 0
+  blur: number;       // 0-20px, default 0
+  sepia: number;      // 0-100, default 0
 }
 
 export interface PuzzleConfig {
@@ -61,33 +68,35 @@ export interface PuzzleConfig {
   gridHeight?: number; // Represents HEIGHT (Rows). Optional for backward compat.
   words: string[];
   showSolution: boolean;
-  seed?: string; 
-  styleMode: 'bw' | 'color'; 
+  seed?: string;
+  styleMode: 'bw' | 'color';
+
+  // New properties for Smart/Expert features
   themeData?: PuzzleTheme;
-  // New Features
-  maskShape: ShapeType;
+  maskShape?: ShapeType;
   hiddenMessage?: string;
-  fontType: FontType;
-  margins?: PuzzleMargins; // New: Page Margins
-  // Art Features
-  backgroundId?: string; // Reference to ArtTemplate
-  backgroundImage?: string; // Base64 Data
+  fontType?: FontType;
+  margins?: PuzzleMargins;
+  designTheme?: 'minimal' | 'classic' | 'kids' | 'modern';
+  showBorders?: boolean;
+  templateId?: string;
+
+  // Art/Background properties
+  backgroundImage?: string;
   backgroundStyle?: 'bw' | 'color';
-  overlayOpacity?: number; // 0.0 to 1.0 - Controls opacity of the white box behind grid
-  textOverlayOpacity?: number; // 0.0 to 1.0 - Controls opacity of headers/wordlist boxes
+  backgroundFilters?: ImageFilters;
+  overlayOpacity?: number;
+  textOverlayOpacity?: number;
 }
+
+export type AIProvider = 'gemini' | 'deepseek' | 'grok' | 'openai' | 'openai_compatible';
 
 export interface GeneratedPuzzle {
   grid: GridCell[][];
-  placedWords: PlacedWord[];
-  unplacedWords: string[];
+  words: PlacedWord[];
+  theme: PuzzleTheme;
   seed: string;
-  timestamp: number; // Created date
 }
-
-// --- New Types for AI & Storage ---
-
-export type AIProvider = 'gemini' | 'openai_compatible'; // DeepSeek, Groq, etc use OpenAI format
 
 export interface AISettings {
   provider: AIProvider;
@@ -97,6 +106,7 @@ export interface AISettings {
 }
 
 export interface AppSettings {
+  id?: string;
   logicAI: AISettings; // Who generates the words?
   designAI: AISettings; // Who generates the colors/theme?
 }
