@@ -37,12 +37,23 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
 
     // --- THEME LOGIC ---
     const getThemeStyles = () => {
+        // Base content style for consistency (The "Modern" Logic)
+        const baseContentStyle = {
+            padding: '0.5in',
+            borderRadius: '16px', // Unified rounded corners for a cleaner look, even for classic
+            transition: 'all 0.3s ease'
+        };
+
         if (designTheme === 'classic') {
             return {
                 pageStyle: {},
-                contentStyle: { border: showBorders ? '3px double black' : 'none', padding: '0' }, // Padding handled by flex gap
+                contentStyle: {
+                    ...baseContentStyle,
+                    border: showBorders ? '3px double black' : 'none',
+                    borderRadius: '4px' // Slight rounding for classic, not too much
+                },
                 headerTitle: { fontFamily: '"Times New Roman", serif', textTransform: 'uppercase' as const, letterSpacing: '0.2em', borderBottom: showBorders ? '1px solid black' : 'none', paddingBottom: '0.2rem' },
-                gridBorder: { border: showBorders ? '2px solid black' : 'none', borderRadius: 0 },
+                gridBorder: { border: showBorders ? '2px solid black' : 'none', borderRadius: '0px' },
                 wordListTitle: { fontFamily: '"Times New Roman", serif', fontStyle: 'italic', borderBottom: 'none' }
             };
         }
@@ -50,17 +61,26 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
             if (isColor) {
                 return {
                     pageStyle: { backgroundColor: undefined },
-                    contentStyle: { border: showBorders ? '6px solid #FFB347' : 'none', borderRadius: '20px', padding: '0.25in' },
+                    contentStyle: {
+                        ...baseContentStyle,
+                        border: showBorders ? '6px solid #FFB347' : 'none',
+                        borderRadius: '24px', // Extra round for kids
+                        backgroundColor: 'rgba(255,255,255,0.4)'
+                    },
                     headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: '#FF4500', textShadow: '2px 2px 0px #FFD700', letterSpacing: '0.05em' },
-                    gridBorder: { border: showBorders ? '4px dashed #77DD77' : 'none', borderRadius: '15px', backgroundColor: 'rgba(255,255,255,0.8)' },
+                    gridBorder: { border: showBorders ? '4px dashed #77DD77' : 'none', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.8)' },
                     wordListTitle: { fontFamily: '"Comic Sans MS", cursive', backgroundColor: '#FF6961', color: 'white', borderRadius: '10px', padding: '0.2rem 0.8rem' }
                 };
             } else {
                 return {
                     pageStyle: {},
-                    contentStyle: { border: showBorders ? '6px solid black' : 'none', borderRadius: '20px', padding: '0.25in' },
+                    contentStyle: {
+                        ...baseContentStyle,
+                        border: showBorders ? '6px solid black' : 'none',
+                        borderRadius: '24px'
+                    },
                     headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: 'black', letterSpacing: '0.05em' },
-                    gridBorder: { border: showBorders ? '4px dashed black' : 'none', borderRadius: '15px' },
+                    gridBorder: { border: showBorders ? '4px dashed black' : 'none', borderRadius: '16px' },
                     wordListTitle: { fontFamily: '"Comic Sans MS", cursive', border: '2px solid black', borderRadius: '10px', padding: '0.2rem 0.8rem' }
                 };
             }
@@ -69,9 +89,8 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
             return {
                 pageStyle: {},
                 contentStyle: {
+                    ...baseContentStyle,
                     border: showBorders ? (isColor ? '2px solid #6366f1' : '2px solid black') : 'none',
-                    borderRadius: '16px',
-                    padding: '0.5in'
                 },
                 headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '800', letterSpacing: '-0.02em' },
                 gridBorder: { border: showBorders ? '1px solid rgba(0,0,0,0.1)' : 'none', borderRadius: '8px' },
@@ -82,8 +101,9 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
             return {
                 pageStyle: {},
                 contentStyle: {
+                    ...baseContentStyle,
                     border: showBorders ? '1px solid #94a3b8' : 'none',
-                    padding: '0.5in'
+                    borderRadius: '12px'
                 },
                 headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '300', letterSpacing: '0.1em' },
                 gridBorder: { border: 'none' },
@@ -92,7 +112,7 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
         }
         return {
             pageStyle: {},
-            contentStyle: { border: showBorders ? '1px solid black' : 'none', padding: '0.5in' },
+            contentStyle: { ...baseContentStyle, border: showBorders ? '1px solid black' : 'none' },
             headerTitle: {},
             gridBorder: {},
             wordListTitle: {}

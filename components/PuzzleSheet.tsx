@@ -2,6 +2,7 @@ import React from 'react';
 import { GeneratedPuzzle, PuzzleConfig, FontType } from '../types';
 import { ClassicTemplate } from './templates/ClassicTemplate';
 import { TechTemplate } from './templates/TechTemplate';
+import { ThematicTemplate } from './templates/ThematicTemplate';
 
 interface PuzzleSheetProps {
     puzzle: GeneratedPuzzle | null;
@@ -38,6 +39,19 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, s
     // Template Selector Logic
     if (config.templateId === 'tech') {
         return <TechTemplate
+            puzzle={puzzle}
+            config={config}
+            fontFamily={fontFamily}
+            isEditMode={isEditMode}
+            selectedElement={selectedElement}
+            onSelectElement={onSelectElement}
+            isPrintPreview={isPrintPreview}
+            onDrag={onDrag}
+        />;
+    }
+
+    if (config.templateId === 'thematic') {
+        return <ThematicTemplate
             puzzle={puzzle}
             config={config}
             fontFamily={fontFamily}

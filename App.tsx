@@ -12,6 +12,7 @@ import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash
 import { ArtStudio } from './components/ArtStudio';
 import { PropertyPanel } from './components/editor/PropertyPanel';
 import { EditorElementId } from './components/editor/types';
+import { CollapsibleSection } from './components/ui/CollapsibleSection';
 const DIFFICULTY_PRESETS = {
     [Difficulty.EASY]: {
         label: "Niños / Fácil",
@@ -428,15 +429,15 @@ const ProviderSettingsForm = ({
 export default function App() {
     // --- Global Settings & Modals ---
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+    const bookStacks = useLiveQuery(() => getBookStacks(), []) || [];
+    const libraryPuzzles = useLiveQuery(() => getLibrary(), []) || [];
+    const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
 
-    useEffect(() => {
-        loadSettings().then(setSettings);
-    }, []);
-
+    // --- Global Modals & UI State ---
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showDiagnostics, setShowDiagnostics] = useState(false);
     const [showLibraryModal, setShowLibraryModal] = useState(false);
-    const [showSaveModal, setShowSaveModal] = useState(false); // New Save Modal
+    const [showSaveModal, setShowSaveModal] = useState(false);
     const [showArtStudio, setShowArtStudio] = useState(false);
     const [puzzleToDelete, setPuzzleToDelete] = useState<{ id: string, name: string } | null>(null);
     const [puzzleToLoad, setPuzzleToLoad] = useState<SavedPuzzleRecord | null>(null);
@@ -447,9 +448,50 @@ export default function App() {
         setToast({ message, type });
     };
 
-    const libraryPuzzles = useLiveQuery(() => getLibrary(), []) || [];
-    const bookStacks = useLiveQuery(() => getBookStacks(), []) || [];
-    const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
+    // --- Panel Resizing State ---
+    const [leftPanelWidth, setLeftPanelWidth] = useState(420);
+    const [rightPanelWidth, setRightPanelWidth] = useState(320);
+    const isResizingLeft = React.useRef(false);
+    const isResizingRight = React.useRef(false);
+
+    const startResizingLeft = useCallback(() => {
+        isResizingLeft.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    const startResizingRight = useCallback(() => {
+        isResizingRight.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, []);
+
+    const stopResizing = useCallback(() => {
+        isResizingLeft.current = false;
+        isResizingRight.current = false;
+        document.body.style.cursor = 'default';
+        document.body.style.userSelect = 'auto';
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (isResizingLeft.current) {
+            const newWidth = e.clientX;
+            if (newWidth > 280 && newWidth < 600) setLeftPanelWidth(newWidth);
+        }
+        if (isResizingRight.current) {
+            const newWidth = window.innerWidth - e.clientX;
+            if (newWidth > 280 && newWidth < 600) setRightPanelWidth(newWidth);
+        }
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener('mousemove', resize);
+        window.addEventListener('mouseup', stopResizing);
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [resize, stopResizing]);
 
     // --- Puzzle Config State ---
     const [title, setTitle] = useState('Sopa de Letras');
@@ -981,8 +1023,15 @@ export default function App() {
     return (
         <div className="flex h-screen text-slate-200 overflow-hidden font-sans selection:bg-indigo-500/30" style={{ background: 'linear-gradient(135deg, #0a0e27 0%, #1a1535 50%, #0f051d 100%)' }}>
             <GradientDefs />
-            {/* Sidebar */}
-            <aside className="w-80 panel-glass border-r border-white/10 flex flex-col z-30 shadow-2xl relative">
+            {/* Left Sidebar - Controls */}
+            <aside style={{ width: leftPanelWidth }} className="panel-glass border-r border-white/10 flex flex-col z-30 shadow-2xl relative transition-all duration-75">
+                {/* Drag Handle */}
+                <div
+                    className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/50 transition-colors z-50 group"
+                    onMouseDown={startResizingLeft}
+                >
+                    <div className="w-0.5 h-full bg-indigo-500/0 group-hover:bg-indigo-500/50 mx-auto transition-colors" />
+                </div>
 
                 <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-indigo-600/20 to-purple-600/20 backdrop-blur-sm">
                     <div className="flex items-center gap-3">
@@ -993,7 +1042,7 @@ export default function App() {
                             <h1 className="font-bold text-lg text-white leading-tight tracking-tight">SopaCreator AI</h1>
                             <span className="text-[10px] text-accent-400 font-mono tracking-widest uppercase">Pro Edition v4.5</span>
                         </div>
-                    </div>
+                    </div >
                     <div className="flex gap-2">
                         <Tooltip text={isEditMode ? "Salir del Editor" : "Editor Visual"} position="bottom">
                             <button
@@ -1014,268 +1063,271 @@ export default function App() {
                             </button>
                         </Tooltip>
                     </div>
-                </div>
+                </div >
 
                 {/* Scrollable Controls */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-                    {isEditMode ? (
-                        <PropertyPanel
-                            selectedElement={selectedElement}
-                            config={{
-                                title, headerLeft, headerRight, footerText, pageNumber,
-                                difficulty, gridSize, gridHeight: gridRows, words: wordList,
-                                showSolution, styleMode, themeData, maskShape, hiddenMessage,
-                                fontType, margins, designTheme, showBorders, templateId,
-                                backgroundImage, backgroundStyle, backgroundFilters, overlayOpacity, textOverlayOpacity
-                            }}
-                            onUpdateConfig={(updates) => {
-                                if (updates.title !== undefined) setTitle(updates.title);
-                                if (updates.fontType !== undefined) setFontType(updates.fontType);
-                                if (updates.gridSize !== undefined) {
-                                    setGridSize(updates.gridSize);
-                                    setGridRows(updates.gridSize);
+                < div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar" >
+                    {
+                        isEditMode ? (
+                            <PropertyPanel
+                                selectedElement={selectedElement}
+                                config={{
+                                    title, headerLeft, headerRight, footerText, pageNumber,
+                                    difficulty, gridSize, gridHeight: gridRows, words: wordList,
+                                    showSolution, styleMode, themeData, maskShape, hiddenMessage,
+                                    fontType, margins, designTheme, showBorders, templateId,
+                                    backgroundImage, backgroundStyle, backgroundFilters, overlayOpacity, textOverlayOpacity
+                                }}
+                                onUpdateConfig={(updates) => {
+                                    if (updates.title !== undefined) setTitle(updates.title);
+                                    if (updates.fontType !== undefined) setFontType(updates.fontType);
+                                    if (updates.gridSize !== undefined) {
+                                        setGridSize(updates.gridSize);
+                                        setGridRows(updates.gridSize);
+                                    }
+                                    if (updates.margins !== undefined) setMargins(updates.margins);
+                                    if (updates.overlayOpacity !== undefined) setOverlayOpacity(updates.overlayOpacity);
+                                    if (updates.textOverlayOpacity !== undefined) setTextOverlayOpacity(updates.textOverlayOpacity);
                                 }
-                                if (updates.margins !== undefined) setMargins(updates.margins);
-                                if (updates.overlayOpacity !== undefined) setOverlayOpacity(updates.overlayOpacity);
-                                if (updates.textOverlayOpacity !== undefined) setTextOverlayOpacity(updates.textOverlayOpacity);
-                            }}
-                        />
-                    ) : (
-                        <div className="p-5 space-y-6">
+                                }
+                            />
+                        ) : (
+                            <div className="p-5 space-y-8">
 
-                            {/* Sección 1: Generación AI */}
-                            <section className="space-y-3 bg-[#1e1e2e] p-4 rounded-xl border border-glass-border/50 shadow-sm relative group">
-                                <div className="absolute top-2 right-2 opacity-10 group-hover:opacity-100 transition-opacity">
-                                    <Sparkles className="w-12 h-12 text-indigo-500" />
-                                </div>
-                                <h2 className="text-xs font-bold text-accent-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                                    <Wand2 className="w-4 h-4" /> Generador Inteligente
-                                </h2>
+                                {/* Sección 1: Generación AI - Improved Visuals */}
+                                <div className="space-y-3 bg-gradient-to-br from-indigo-900/20 to-purple-900/20 p-4 rounded-xl border border-white/10 shadow-lg relative group transition-all hover:border-indigo-500/30">
+                                    <div className="absolute top-2 right-2 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
+                                        <Sparkles className="w-12 h-12 text-indigo-500 blur-sm" />
+                                    </div>
+                                    <h2 className="text-xs font-bold text-accent-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                                        <Wand2 className="w-4 h-4" /> Generador Inteligente
+                                    </h2>
 
-                                <div className="space-y-2 relative z-10">
-                                    <label className="text-xs font-medium text-slate-400">Tema o Tópico</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={topic}
-                                            onChange={(e) => setTopic(e.target.value)}
-                                            placeholder="Ej: Dinosaurios, Espacio..."
-                                            className="flex-1 bg-cosmic-900 border border-glass-border rounded-lg px-3 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none text-white placeholder-slate-600"
-                                            onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
-                                        />
-                                        <button
-                                            onClick={handleAiGenerate}
-                                            disabled={isGeneratingAI || !topic}
-                                            className="btn-primary p-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center w-10 h-10"
-                                        >
-                                            {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                                        </button>
+                                    <div className="space-y-3 relative z-10">
+                                        <label className="text-xs font-medium text-slate-400">Tema o Tópico</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={topic}
+                                                onChange={(e) => setTopic(e.target.value)}
+                                                placeholder="Ej: Dinosaurios, Espacio..."
+                                                className="flex-1 bg-cosmic-900 border border-glass-border rounded-lg px-3 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none text-white placeholder-slate-600 shadow-inner"
+                                                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
+                                            />
+                                            <button
+                                                onClick={handleAiGenerate}
+                                                disabled={isGeneratingAI || !topic}
+                                                className="btn-primary p-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center w-11 h-11 rounded-lg shadow-lg shadow-indigo-500/20"
+                                            >
+                                                {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </section>
 
-                            {/* Sección 2: Configuración Básica */}
-                            <section className="space-y-4 hover-lift p-4 rounded-xl bg-cosmic-800/30">
-                                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                                    <Layout className="w-3 h-3" /> Estructura
-                                </h2>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Dificultad</label>
-                                        <select
-                                            value={difficulty}
-                                            onChange={(e) => handleDifficultyChange(e.target.value as Difficulty)}
-                                            className="w-full bg-cosmic-800 border-none rounded-lg px-3 py-2 text-xs font-medium text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer hover:bg-slate-700 transition-colors"
-                                        >
-                                            {Object.values(Difficulty).map(d => (
-                                                <option key={d} value={d}>{DIFFICULTY_PRESETS[d].label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Forma Máscara</label>
-                                        <div className="flex bg-cosmic-800 rounded-lg p-1 gap-1">
-                                            {(['SQUARE', 'CIRCLE', 'HEART', 'STAR'] as ShapeType[]).map(shape => (
-                                                <button
-                                                    key={shape}
-                                                    onClick={() => setMaskShape(shape)}
-                                                    className={`flex-1 p-1 rounded flex items-center justify-center transition-all ${maskShape === shape ? 'bg-accent-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                                                    title={shape}
+                                {/* Sección 2: Configuración Básica */}
+                                <CollapsibleSection title="Estructura" icon={Layout} defaultOpen={true}>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Dificultad</label>
+                                                <select
+                                                    value={difficulty}
+                                                    onChange={(e) => handleDifficultyChange(e.target.value as Difficulty)}
+                                                    className="w-full bg-cosmic-900 border border-glass-border rounded-lg px-3 py-2 text-xs font-medium text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer hover:bg-slate-800 transition-colors"
                                                 >
-                                                    {shape === 'SQUARE' && <Square className="w-3 h-3" />}
-                                                    {shape === 'CIRCLE' && <Circle className="w-3 h-3" />}
-                                                    {shape === 'HEART' && <Heart className="w-3 h-3" />}
-                                                    {shape === 'STAR' && <Star className="w-3 h-3" />}
-                                                </button>
-                                            ))}
+                                                    {Object.values(Difficulty).map(d => (
+                                                        <option key={d} value={d}>{DIFFICULTY_PRESETS[d].label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Forma Máscara</label>
+                                                <div className="flex bg-cosmic-900 border border-glass-border rounded-lg p-1 gap-1">
+                                                    {(['SQUARE', 'CIRCLE', 'HEART', 'STAR'] as ShapeType[]).map(shape => (
+                                                        <button
+                                                            key={shape}
+                                                            onClick={() => setMaskShape(shape)}
+                                                            className={`flex-1 p-1.5 rounded flex items-center justify-center transition-all ${maskShape === shape ? 'bg-accent-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
+                                                            title={shape}
+                                                        >
+                                                            {shape === 'SQUARE' && <Square className="w-3.5 h-3.5" />}
+                                                            {shape === 'CIRCLE' && <Circle className="w-3.5 h-3.5" />}
+                                                            {shape === 'HEART' && <Heart className="w-3.5 h-3.5" />}
+                                                            {shape === 'STAR' && <Star className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3 pt-2 border-t border-white/5">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Dimensiones Grilla</label>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-slate-500">Auto-ajuste</span>
+                                                    <button
+                                                        onClick={() => setIsSmartGrid(!isSmartGrid)}
+                                                        className={`w-9 h-5 rounded-full transition-colors relative ${isSmartGrid ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                                                    >
+                                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform left-1 ${isSmartGrid ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className={`grid grid-cols-2 gap-3 transition-opacity ${isSmartGrid ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                                <div>
+                                                    <label className="text-[9px] text-slate-500 block mb-1">Columnas (Ancho)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="5" max="30"
+                                                        value={gridSize}
+                                                        onChange={(e) => {
+                                                            setGridSize(parseInt(e.target.value));
+                                                            if (maskShape !== 'SQUARE') setGridRows(parseInt(e.target.value));
+                                                        }}
+                                                        className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs text-center focus:border-indigo-500 outline-none"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] text-slate-500 block mb-1">Filas (Alto)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="5" max="30"
+                                                        value={gridRows}
+                                                        onChange={(e) => setGridRows(parseInt(e.target.value))}
+                                                        disabled={maskShape !== 'SQUARE'}
+                                                        className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs text-center disabled:opacity-50 focus:border-indigo-500 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                </CollapsibleSection>
 
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Dimensiones Grilla</label>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-slate-500">Auto-ajuste</span>
-                                            <button
-                                                onClick={() => setIsSmartGrid(!isSmartGrid)}
-                                                className={`w-8 h-4 rounded-full transition-colors relative ${isSmartGrid ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                                            >
-                                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform left-0.5 ${isSmartGrid ? 'translate-x-4' : 'translate-x-0'}`} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className={`grid grid-cols-2 gap-3 transition-opacity ${isSmartGrid ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                                        <div>
-                                            <label className="text-[9px] text-slate-500 block mb-1">Columnas (Ancho)</label>
+                                {/* Sección 3: Palabras */}
+                                <CollapsibleSection title={`Vocabulario (${wordList.length})`} icon={List} defaultOpen={true}>
+                                    <div className="space-y-3">
+                                        <div className="flex gap-2">
                                             <input
-                                                type="number"
-                                                min="5" max="30"
-                                                value={gridSize}
-                                                onChange={(e) => {
-                                                    setGridSize(parseInt(e.target.value));
-                                                    if (maskShape !== 'SQUARE') setGridRows(parseInt(e.target.value)); // Keep square aspect for shapes
+                                                type="text"
+                                                value={manualWord}
+                                                onChange={(e) => setManualWord(e.target.value.toUpperCase())}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && manualWord.trim()) {
+                                                        setWordList(prev => [...prev, manualWord.trim().replace(/[^A-ZÑ]/g, '')]);
+                                                        setManualWord('');
+                                                    }
                                                 }}
-                                                className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs text-center"
+                                                placeholder="Añadir palabra..."
+                                                className="flex-1 bg-cosmic-900 border border-glass-border rounded-l-lg px-3 py-2 text-xs focus:border-indigo-500 outline-none text-white font-mono"
                                             />
+                                            <button
+                                                onClick={() => {
+                                                    if (manualWord.trim()) {
+                                                        setWordList(prev => [...prev, manualWord.trim().replace(/[^A-ZÑ]/g, '')]);
+                                                        setManualWord('');
+                                                    }
+                                                }}
+                                                className="bg-slate-700 hover:bg-slate-600 px-3 rounded-r-lg text-white transition-colors"
+                                            >
+                                                <Plus className="w-4 h-4" />
+                                            </button>
                                         </div>
-                                        <div>
-                                            <label className="text-[9px] text-slate-500 block mb-1">Filas (Alto)</label>
-                                            <input
-                                                type="number"
-                                                min="5" max="30"
-                                                value={gridRows}
-                                                onChange={(e) => setGridRows(parseInt(e.target.value))}
-                                                disabled={maskShape !== 'SQUARE'}
-                                                className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs text-center disabled:opacity-50"
-                                            />
+
+                                        <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto content-start bg-cosmic-900/50 p-2 rounded-lg border border-slate-800 custom-scrollbar">
+                                            {wordList.map((w, i) => (
+                                                <span key={i} className="bg-cosmic-800 text-slate-300 text-[10px] px-2 py-1 rounded border border-glass-border flex items-center gap-1 group hover:border-indigo-500/50 transition-colors">
+                                                    {w}
+                                                    <button
+                                                        onClick={() => setWordList(prev => prev.filter((_, idx) => idx !== i))}
+                                                        className="hover:text-red-400 transition-colors"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                            {wordList.length === 0 && <span className="text-[10px] text-slate-600 italic w-full text-center py-4">Lista vacía. Añade palabras o usa la IA.</span>}
+                                        </div>
+
+                                        <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-[10px] text-amber-200/80 flex gap-2 items-start mt-2">
+                                            <MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-400" />
+                                            <div className="w-full">
+                                                <label className="block font-bold mb-1 text-amber-400">Mensaje Oculto (Opcional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={hiddenMessage}
+                                                    onChange={(e) => setHiddenMessage(e.target.value)}
+                                                    placeholder="Se revela con las letras sobrantes..."
+                                                    className="w-full bg-transparent border-b border-amber-500/30 outline-none text-amber-100 placeholder-amber-500/40 py-1 focus:border-amber-500/60 transition-colors"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
+                                </CollapsibleSection>
 
+                                {/* Sección 5: Textos */}
+                                <CollapsibleSection title="Metadatos" icon={Type} defaultOpen={false}>
+                                    <div className="space-y-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] text-slate-500 block">Título Principal</label>
+                                            <input value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs focus:border-indigo-500 outline-none" placeholder="Título Principal" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] text-slate-500 block">Subtítulo Izq</label>
+                                                <input value={headerLeft} onChange={e => setHeaderLeft(e.target.value)} className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs focus:border-indigo-500 outline-none" placeholder="Subtítulo Izq" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] text-slate-500 block">Subtítulo Der</label>
+                                                <input value={headerRight} onChange={e => setHeaderRight(e.target.value)} className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs focus:border-indigo-500 outline-none" placeholder="Subtítulo Der" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="col-span-2 space-y-1">
+                                                <label className="text-[9px] text-slate-500 block">Pie de página</label>
+                                                <input value={footerText} onChange={e => setFooterText(e.target.value)} className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs focus:border-indigo-500 outline-none" placeholder="Pie de página" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] text-slate-500 block"># Pág</label>
+                                                <input value={pageNumber} onChange={e => setPageNumber(e.target.value)} className="w-full bg-cosmic-900 border border-glass-border rounded px-2 py-1.5 text-xs text-center focus:border-indigo-500 outline-none" placeholder="#" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CollapsibleSection>
 
-                                </div>
-                            </section>
-
-                            {/* Sección 3: Palabras */}
-                            <section className="space-y-3">
-                                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                                    <List className="w-3 h-3" /> Vocabulario <span className="text-[10px] normal-case opacity-50 ml-auto">{wordList.length} palabras</span>
-                                </h2>
-
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={manualWord}
-                                        onChange={(e) => setManualWord(e.target.value.toUpperCase())}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && manualWord.trim()) {
-                                                setWordList(prev => [...prev, manualWord.trim().replace(/[^A-ZÑ]/g, '')]);
-                                                setManualWord('');
-                                            }
-                                        }}
-                                        placeholder="Añadir palabra..."
-                                        className="flex-1 bg-cosmic-900 border border-glass-border rounded-l-lg px-3 py-2 text-xs focus:border-indigo-500 outline-none text-white font-mono"
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            if (manualWord.trim()) {
-                                                setWordList(prev => [...prev, manualWord.trim().replace(/[^A-ZÑ]/g, '')]);
-                                                setManualWord('');
-                                            }
-                                        }}
-                                        className="bg-slate-700 hover:bg-slate-600 px-3 rounded-r-lg text-white"
-                                    >
-                                        <Plus className="w-4 h-4" />
-                                    </button>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto content-start bg-cosmic-900/50 p-2 rounded-lg border border-slate-800">
-                                    {wordList.map((w, i) => (
-                                        <span key={i} className="bg-cosmic-800 text-slate-300 text-[10px] px-2 py-0.5 rounded border border-glass-border flex items-center gap-1 group">
-                                            {w}
-                                            <button
-                                                onClick={() => setWordList(prev => prev.filter((_, idx) => idx !== i))}
-                                                className="hover:text-red-400"
-                                            >
-                                                <X className="w-2.5 h-2.5" />
-                                            </button>
-                                        </span>
-                                    ))}
-                                    {wordList.length === 0 && <span className="text-[10px] text-slate-600 italic w-full text-center py-2">Lista vacía. Añade palabras o usa la IA.</span>}
-                                </div>
-
-                                <div className="bg-amber-500/10 border border-amber-500/20 p-2 rounded text-[10px] text-amber-200/80 flex gap-2 items-start">
-                                    <MessageSquare className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                                    <div className="w-full">
-                                        <label className="block font-bold mb-1">Mensaje Oculto (Opcional)</label>
-                                        <input
-                                            type="text"
-                                            value={hiddenMessage}
-                                            onChange={(e) => setHiddenMessage(e.target.value)}
-                                            placeholder="Se revela con las letras sobrantes..."
-                                            className="w-full bg-transparent border-b border-amber-500/30 outline-none text-amber-100 placeholder-amber-500/40"
+                                {/* Sección 6: Márgenes */}
+                                <CollapsibleSection title="Márgenes (Pulgadas)" icon={Move} defaultOpen={false}>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <MarginControl
+                                            label="Superior"
+                                            value={margins.top}
+                                            max={3.0}
+                                            onChange={(val) => setMargins({ ...margins, top: val })}
+                                        />
+                                        <MarginControl
+                                            label="Inferior"
+                                            value={margins.bottom}
+                                            max={3.0}
+                                            onChange={(val) => setMargins({ ...margins, bottom: val })}
+                                        />
+                                        <MarginControl
+                                            label="Izquierdo"
+                                            value={margins.left}
+                                            max={3.0}
+                                            onChange={(val) => setMargins({ ...margins, left: val })}
+                                        />
+                                        <MarginControl
+                                            label="Derecho"
+                                            value={margins.right}
+                                            max={3.0}
+                                            onChange={(val) => setMargins({ ...margins, right: val })}
                                         />
                                     </div>
-                                </div>
-                            </section>
-
-
-
-                            {/* Sección 5: Textos */}
-                            <section className="space-y-2">
-                                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                                    <Type className="w-3 h-3" /> Metadatos
-                                </h2>
-                                <div className="grid grid-cols-1 gap-2">
-                                    <input value={title} onChange={e => setTitle(e.target.value)} className="bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs" placeholder="Título Principal" />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input value={headerLeft} onChange={e => setHeaderLeft(e.target.value)} className="bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs" placeholder="Subtítulo Izq" />
-                                        <input value={headerRight} onChange={e => setHeaderRight(e.target.value)} className="bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs" placeholder="Subtítulo Der" />
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <input value={footerText} onChange={e => setFooterText(e.target.value)} className="col-span-2 bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs" placeholder="Pie de página" />
-                                        <input value={pageNumber} onChange={e => setPageNumber(e.target.value)} className="bg-cosmic-900 border border-glass-border rounded px-2 py-1 text-xs text-center" placeholder="# Pág" />
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* Sección 6: Márgenes */}
-                            <section className="space-y-2">
-                                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                                    <Move className="w-3 h-3" /> Márgenes (Pulgadas)
-                                </h2>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <MarginControl
-                                        label="Superior"
-                                        value={margins.top}
-                                        max={3.0}
-                                        onChange={(val) => setMargins({ ...margins, top: val })}
-                                    />
-                                    <MarginControl
-                                        label="Inferior"
-                                        value={margins.bottom}
-                                        max={3.0}
-                                        onChange={(val) => setMargins({ ...margins, bottom: val })}
-                                    />
-                                    <MarginControl
-                                        label="Izquierdo"
-                                        value={margins.left}
-                                        max={3.0}
-                                        onChange={(val) => setMargins({ ...margins, left: val })}
-                                    />
-                                    <MarginControl
-                                        label="Derecho"
-                                        value={margins.right}
-                                        max={3.0}
-                                        onChange={(val) => setMargins({ ...margins, right: val })}
-                                    />
-                                </div>
-                            </section>
-                        </div>
-                    )}
-                </div>
+                                </CollapsibleSection>
+                            </div>
+                        )}
+                </div >
 
 
             </aside >
@@ -1324,12 +1376,12 @@ export default function App() {
                         <FileText className="w-4 h-4" />
                         {isPrintPreview ? 'Modo Impresión' : 'Vista Previa'}
                     </button>
-                </div>
+                </div >
 
                 {/* Scrollable Canvas Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full flex flex-col items-center pt-24 pb-20 px-8 relative z-10">
+                < div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full flex flex-col items-center pt-24 pb-20 px-8 relative z-10" >
                     {/* Paper Container */}
-                    <div id="puzzle-sheet" className="relative scale-[0.85] xl:scale-100 transition-transform duration-500 shadow-2xl origin-top puzzle-preview-frame">
+                    < div id="puzzle-sheet" className="relative scale-[0.85] xl:scale-100 transition-transform duration-500 shadow-2xl origin-top puzzle-preview-frame" >
                         <PuzzleSheet
                             puzzle={generatedPuzzle}
                             config={{
@@ -1350,13 +1402,20 @@ export default function App() {
                             isPrintPreview={isPrintPreview}
                             onDrag={handleElementDrag}
                         />
-                    </div>
-                </div>
+                    </div >
+                </div >
 
             </main >
 
             {/* Right Sidebar - Design & Export */}
-            <aside className="w-80 panel-glass border-l border-white/10 flex flex-col z-30 shadow-2xl relative">
+            <aside style={{ width: rightPanelWidth }} className="panel-glass border-l border-white/10 flex flex-col z-30 shadow-2xl relative">
+                {/* Drag Handle */}
+                <div
+                    className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/50 transition-colors z-50 group"
+                    onMouseDown={startResizingRight}
+                >
+                    <div className="w-0.5 h-full bg-indigo-500/0 group-hover:bg-indigo-500/50 mx-auto transition-colors" />
+                </div>
                 <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-600/20 to-pink-600/20 backdrop-blur-sm">
                     <h2 className="font-bold text-lg text-white flex items-center gap-2">
                         <Palette className="w-5 h-5" stroke="url(#gradient-accent)" /> Diseño
@@ -1547,7 +1606,7 @@ export default function App() {
                         </button>
                     </div>
                 </div>
-            </aside>
+            </aside >
 
             <ArtStudio
                 isOpen={showArtStudio}

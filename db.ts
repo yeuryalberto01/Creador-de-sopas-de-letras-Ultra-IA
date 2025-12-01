@@ -1,11 +1,12 @@
 import Dexie, { Table } from 'dexie';
-import { SavedPuzzleRecord, BookStack, AppSettings, ArtTemplate } from './types';
+import { SavedPuzzleRecord, BookStack, AppSettings, ArtTemplate, UserPreference } from './types';
 
 export class SopaDatabase extends Dexie {
     puzzles!: Table<SavedPuzzleRecord, string>;
     stacks!: Table<BookStack, string>;
     settings!: Table<AppSettings, string>;
     art!: Table<ArtTemplate, string>;
+    preferences!: Table<UserPreference, string>;
 
     constructor() {
         super('SopaCreatorDB');
@@ -15,6 +16,11 @@ export class SopaDatabase extends Dexie {
             stacks: '++id, name',
             settings: 'id', // We'll use a fixed ID 'global_settings'
             art: '++id'
+        });
+
+        // Version 2: Add preferences
+        this.version(2).stores({
+            preferences: '++id, type, timestamp'
         });
     }
 }

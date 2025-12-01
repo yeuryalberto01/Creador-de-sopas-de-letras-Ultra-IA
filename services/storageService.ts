@@ -137,3 +137,46 @@ export const deleteArtTemplate = async (id: string) => {
 export const getArtLibrary = async (): Promise<ArtTemplate[]> => {
     return await db.art.toArray();
 };
+
+// --- User Preferences (Feedback Loop) ---
+
+export const saveUserPreference = async (type: 'like' | 'dislike', prompt: string, styleDesc?: string, artTemplateId?: string) => {
+    await db.preferences.add({
+        id: crypto.randomUUID(),
+        type,
+        prompt,
+        styleDesc,
+        artTemplateId,
+        timestamp: Date.now()
+    });
+};
+
+export const getUserPreferences = async () => {
+    return await db.preferences.toArray();
+};
+
+export const exportLearningData = async (): Promise<string> => {
+    const preferences = await db.preferences.toArray();
+    const settings = await loadSettings();
+    const tasteProfile = settings.tasteProfile || "No profile generated yet.";
+
+    const exportData = {
+        version: 1,
+        timestamp: Date.now(),
+        tasteProfile,
+        preferences
+    };
+
+    return JSON.stringify(exportData, null, 2);
+};
+
+export const saveTasteProfile = async (profile: string) => {
+    const settings = await loadSettings();
+    settings.tasteProfile = profile;
+    await saveSettings(settings);
+};
+
+export const getTasteProfile = async (): Promise<string | undefined> => {
+    const settings = await loadSettings();
+    return settings.tasteProfile;
+};

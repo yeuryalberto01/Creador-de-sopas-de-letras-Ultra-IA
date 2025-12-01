@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArtTemplate, ImageFilters, AISettings } from '../types';
-import { generatePuzzleBackground, enhancePromptAI, createContextAwarePrompt } from '../services/aiService';
-import { getArtLibrary, saveArtTemplate, deleteArtTemplate } from '../services/storageService';
+import { X, Image as ImageIcon, Upload, Sliders, Sparkles, Save, Check, Loader2, Trash2, RefreshCw, Wand2, Eye, ThumbsUp, ThumbsDown, Brain, Download, CheckSquare, Square } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { X, Image as ImageIcon, Upload, Sliders, Sparkles, Save, Check, Loader2, Trash2, RefreshCw, Wand2, Eye } from 'lucide-react';
-import { generateLayoutMask } from '../utils/layoutMask';
+import { getArtLibrary, saveArtTemplate, deleteArtTemplate, saveUserPreference, exportLearningData, saveTasteProfile, getTasteProfile, getUserPreferences } from '../services/storageService';
+import { enhancePromptAI, createContextAwarePrompt, generatePuzzleBackground, analyzeImageStyle, generateTasteProfile } from '../services/aiService';
+import { ArtTemplate, ImageFilters, AISettings } from '../types';
 
 interface ArtStudioProps {
     isOpen: boolean;
     onClose: () => void;
+    onApply: (image: string, filters: ImageFilters, template: string) => void;
     currentImage?: string;
     currentFilters?: ImageFilters;
-    onApply: (image: string, filters: ImageFilters, templateId?: string) => void;
-    aiSettings: AISettings;
     selectedTemplate: string;
+    aiSettings: AISettings;
 }
 
 const DEFAULT_FILTERS: ImageFilters = {
@@ -25,28 +24,18 @@ const DEFAULT_FILTERS: ImageFilters = {
 };
 
 const STYLE_PRESETS = [
-    { id: 'bw', label: 'Blanco y Negro', desc: 'Line art simple' },
-    { id: 'color', label: 'Color', desc: 'Ilustración vibrante' },
-    { id: 'watercolor', label: 'Acuarela', desc: 'Suave y artístico' },
-    { id: 'cyberpunk', label: 'Cyberpunk', desc: 'Neón y futurista' },
-    { id: 'sketch', label: 'Boceto', desc: 'Lápiz y papel' },
-    { id: 'oil', label: 'Óleo', desc: 'Textura de pintura' },
-    { id: '3d', label: '3D Render', desc: 'Estilo Pixar/Disney' },
-    { id: 'pixel', label: 'Pixel Art', desc: 'Retro 8-bit' },
+    { id: 'bw', label: 'Blanco y Negro', desc: 'Line art, high contrast, coloring book style' },
+    { id: 'color', label: 'Color Vibrante', desc: 'Digital art, vibrant colors, detailed' },
+    { id: 'watercolor', label: 'Acuarela', desc: 'Soft, artistic, painterly texture' },
+    { id: '3d', label: '3D Render', desc: 'Pixar style, cute, isometric' },
+    { id: 'pixel', label: 'Pixel Art', desc: 'Retro game style, 8-bit' },
 ];
 
-export const ArtStudio: React.FC<ArtStudioProps> = ({
-    isOpen,
-    onClose,
-    currentImage,
-    currentFilters,
-    onApply,
-    aiSettings,
-    selectedTemplate
-}) => {
-    const [activeTab, setActiveTab] = useState<'generate' | 'gallery' | 'upload' | 'adjust'>('generate');
+export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, currentImage, currentFilters, selectedTemplate, aiSettings }) => {
+    const [activeTab, setActiveTab] = useState<'generate' | 'gallery' | 'upload' | 'adjust' | 'learning'>('generate');
     const [previewImage, setPreviewImage] = useState<string | undefined>(currentImage);
     const [filters, setFilters] = useState<ImageFilters>(currentFilters || DEFAULT_FILTERS);
+    const [targetTemplate, setTargetTemplate] = useState<string>(selectedTemplate);
 
     // AI Generation State
     const [prompt, setPrompt] = useState('');
@@ -56,7 +45,108 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
     const [useSmartDesign, setUseSmartDesign] = useState(true); // Default to Smart Design
     const [statusLog, setStatusLog] = useState<string[]>([]);
 
-    const addLog = (msg: string) => setStatusLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
+    // Style Analysis State
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analyzedStyle, setAnalyzedStyle] = useState<string | null>(null);
+    const [customStyles, setCustomStyles] = useState<{ id: string, label: string, desc: string }[]>([]);
+
+    // Feedback State
+    const [feedbackGiven, setFeedbackGiven] = useState(false);
+
+    // Learning State
+    const [tasteProfile, setTasteProfile] = useState<string>('');
+    const [isConsolidating, setIsConsolidating] = useState(false);
+
+    // Load custom styles and taste profile
+    useEffect(() => {
+        const saved = localStorage.getItem('custom_styles');
+        if (saved) {
+            try {
+                setCustomStyles(JSON.parse(saved));
+            } catch (e) {
+                console.error("Error loading custom styles", e);
+            }
+        }
+        getTasteProfile().then(p => setTasteProfile(p || ''));
+    }, []);
+
+    // Gallery State
+    const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
+    const preferences = useLiveQuery(() => getUserPreferences(), []) || [];
+
+    // Create a map of artTemplateId -> preference type
+    const preferenceMap = React.useMemo(() => {
+        const map = new Map<string, 'like' | 'dislike'>();
+        preferences.forEach(p => {
+            if (p.artTemplateId) {
+                map.set(p.artTemplateId, p.type);
+            }
+        });
+        return map;
+    }, [preferences]);
+
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+
+    const toggleSelection = (id: string) => {
+        const newSet = new Set(selectedItems);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedItems(newSet);
+    };
+
+    const handleBulkFeedback = async (type: 'like' | 'dislike') => {
+        if (selectedItems.size === 0) return;
+
+        const items = artLibrary.filter(item => selectedItems.has(item.id));
+        for (const item of items) {
+            await saveUserPreference(type, item.prompt, item.style, item.id);
+        }
+
+        addLog(`Feedback masivo enviado: ${type} (${items.length} imágenes)`);
+        setIsSelectionMode(false);
+        setSelectedItems(new Set());
+
+        // Prompt to consolidate
+        if (confirm(`Has calificado ${items.length} imágenes. ¿Quieres actualizar tu perfil de gustos ahora?`)) {
+            setActiveTab('learning');
+            handleConsolidate();
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedItems.size === 0) return;
+        if (!confirm(`¿Estás seguro de eliminar ${selectedItems.size} imágenes?`)) return;
+
+        for (const id of selectedItems) {
+            await deleteArtTemplate(id);
+        }
+
+        addLog(`Eliminadas ${selectedItems.size} imágenes.`);
+        setIsSelectionMode(false);
+        setSelectedItems(new Set());
+    };
+
+    // Upload State
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setPreviewImage(currentImage);
+            setFilters(currentFilters || DEFAULT_FILTERS);
+        }
+    }, [isOpen, currentImage, currentFilters]);
+
+    const addLog = (msg: string) => setStatusLog(prev => [...prev, msg]);
+
+    const generateLayoutMask = async (elementId: string): Promise<string> => {
+        // Placeholder: return a white 1x1 pixel base64
+        // In a real implementation, this would use html2canvas on the puzzle grid
+        return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
+    };
 
     const handleEnhancePrompt = async () => {
         if (!prompt) return;
@@ -71,19 +161,6 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
         }
     };
 
-    // Gallery State
-    const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
-
-    // Upload State
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            setPreviewImage(currentImage);
-            setFilters(currentFilters || DEFAULT_FILTERS);
-        }
-    }, [isOpen, currentImage, currentFilters]);
-
     const handleGenerate = async () => {
         if (!prompt) return;
         setIsGenerating(true);
@@ -93,10 +170,22 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
         try {
             let bgBase64: string;
 
+            // Check if selected style is custom
+            const customStyle = customStyles.find(s => s.id === style);
+            let finalPrompt = prompt;
+            let styleParam = style;
+
+            if (customStyle) {
+                // If custom style, append description to prompt and use 'custom' or 'color' as base style
+                finalPrompt = `${prompt}. Art Style: ${customStyle.desc}`;
+                styleParam = 'custom'; // Or whatever the backend expects for generic/custom
+                addLog(`Using Custom Style: ${customStyle.label}`);
+            }
+
             if (useSmartDesign) {
                 // 1. Context Aware Prompting
-                addLog("Refining prompt for layout...");
-                const contextPrompt = await createContextAwarePrompt(aiSettings, prompt, selectedTemplate);
+                addLog(`Refining prompt for ${targetTemplate}...`);
+                const contextPrompt = await createContextAwarePrompt(aiSettings, finalPrompt, targetTemplate);
                 addLog("Prompt refined.");
 
                 // 2. Capture Layout Mask
@@ -105,7 +194,6 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
 
                 if (!mask) {
                     addLog("WARNING: Mask generation failed. Using fallback.");
-                    // Fallback: 1x1 white pixel (everything is safe zone, might cause overlap but better than crash)
                     mask = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
                 }
                 addLog(`Mask generated (${mask.length} chars)`);
@@ -123,7 +211,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                     body: JSON.stringify({
                         prompt: contextPrompt, // Use the refined prompt
                         mask_image: mask,
-                        style: style
+                        style: styleParam
                     })
                 });
 
@@ -141,7 +229,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
             } else {
                 // Legacy Generation
                 addLog("Using Legacy Generation...");
-                bgBase64 = await generatePuzzleBackground(aiSettings, prompt, style);
+                bgBase64 = await generatePuzzleBackground(aiSettings, finalPrompt, styleParam);
             }
 
             setPreviewImage(bgBase64);
@@ -194,16 +282,81 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
 
     const handleApply = () => {
         if (previewImage) {
-            // Default to classic if not specified via the buttons above
-            // But actually, the Apply button at the bottom should probably just apply the image
-            // The template selection is a bit weird here. Let's make the Apply button use a state for template.
-            onApply(previewImage, filters, selectedTemplate);
+            onApply(previewImage, filters, targetTemplate);
             onClose();
         }
     };
 
     const getFilterString = () => {
         return `brightness(${filters.brightness}%) contrast(${filters.contrast}%) grayscale(${filters.grayscale}%) blur(${filters.blur}px) sepia(${filters.sepia}%)`;
+    };
+
+    const handleAnalyzeStyle = async () => {
+        if (!previewImage) return;
+        setIsAnalyzing(true);
+        try {
+            const styleDesc = await analyzeImageStyle(aiSettings, previewImage);
+            setAnalyzedStyle(styleDesc);
+            addLog("Estilo analizado con éxito.");
+        } catch (e: any) {
+            console.error("Error analyzing style:", e);
+            addLog(`Error analizando estilo: ${e.message}`);
+            alert("Error analizando estilo: " + e.message);
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const saveAnalyzedStyle = () => {
+        if (!analyzedStyle) return;
+        const newStyle = {
+            id: crypto.randomUUID(),
+            label: `Custom ${customStyles.length + 1}`,
+            desc: analyzedStyle
+        };
+        const updated = [...customStyles, newStyle];
+        setCustomStyles(updated);
+        localStorage.setItem('custom_styles', JSON.stringify(updated));
+        setAnalyzedStyle(null);
+        addLog("Estilo guardado.");
+    };
+
+    const handleFeedback = async (type: 'like' | 'dislike') => {
+        // Find current template ID if possible (this is tricky for preview, but for gallery it's easy)
+        // For the main preview, we might not have the ID readily available unless we track it.
+        // But the user asked for GALLERY persistence.
+
+        await saveUserPreference(type, prompt, style);
+        setFeedbackGiven(true);
+        addLog(`Feedback enviado: ${type}`);
+    };
+
+    const handleConsolidate = async () => {
+        setIsConsolidating(true);
+        try {
+            const prefs = await getUserPreferences();
+            const profile = await generateTasteProfile(aiSettings, prefs);
+            setTasteProfile(profile);
+            await saveTasteProfile(profile);
+            addLog("Perfil de gustos actualizado.");
+        } catch (e: any) {
+            console.error(e);
+            addLog("Error consolidando perfil: " + e.message);
+        } finally {
+            setIsConsolidating(false);
+        }
+    };
+
+    const handleExport = async () => {
+        const json = await exportLearningData();
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sopa-ia-learning-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        addLog("Datos de aprendizaje exportados.");
     };
 
     if (!isOpen) return null;
@@ -254,6 +407,12 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                             >
                                 <Sliders className="w-4 h-4" /> Ajustar
                             </button>
+                            <button
+                                onClick={() => setActiveTab('learning')}
+                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'learning' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                <Brain className="w-4 h-4" /> Cerebro
+                            </button>
                         </div>
 
                         {/* Tab Content */}
@@ -299,15 +458,65 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                         />
                                     </div>
 
-                                    {/* Template Info (Read Only) */}
-                                    <div className="bg-cosmic-800 p-2 rounded border border-glass-border">
-                                        <span className="text-xs text-slate-400">Plantilla Activa: </span>
-                                        <span className="text-xs font-bold text-accent-400 uppercase">{selectedTemplate}</span>
+                                    {/* Template Selection */}
+                                    <div className="bg-cosmic-800 p-3 rounded-lg border border-glass-border mb-4">
+                                        <label className="text-xs font-bold text-slate-400 mb-2 block">Modo de Diseño</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setTargetTemplate('classic')}
+                                                className={`flex-1 py-2 px-3 rounded text-xs font-bold transition-colors ${targetTemplate !== 'thematic'
+                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                                                    }`}
+                                            >
+                                                Clásico / Tech
+                                            </button>
+                                            <button
+                                                onClick={() => setTargetTemplate('thematic')}
+                                                className={`flex-1 py-2 px-3 rounded text-xs font-bold transition-colors ${targetTemplate === 'thematic'
+                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                                                    }`}
+                                            >
+                                                Temático (Full Page)
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 mt-2 leading-tight">
+                                            {targetTemplate === 'thematic'
+                                                ? "Genera un diseño de página completa donde el puzzle se integra en el arte."
+                                                : "Genera un fondo para el área del puzzle o la página, manteniendo la estructura clásica."}
+                                        </p>
                                     </div>
 
                                     <div>
                                         <label className="block text-xs font-bold text-slate-400 mb-2">Estilo Artístico</label>
                                         <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                            {/* Custom Styles Section */}
+                                            {customStyles.length > 0 && (
+                                                <div className="col-span-2 text-[10px] font-bold text-accent-400 mt-1 mb-1 border-b border-glass-border pb-1">
+                                                    Mis Estilos
+                                                </div>
+                                            )}
+                                            {customStyles.map(preset => (
+                                                <button
+                                                    key={preset.id}
+                                                    onClick={() => setStyle(preset.id)}
+                                                    className={`p-2 rounded-lg border text-left transition-all ${style === preset.id
+                                                        ? 'bg-accent-600/20 border-indigo-500 text-white shadow-sm'
+                                                        : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700'
+                                                        }`}
+                                                >
+                                                    <div className="text-xs font-bold truncate">{preset.label}</div>
+                                                    <div className="text-[9px] opacity-70 truncate">{preset.desc}</div>
+                                                </button>
+                                            ))}
+
+                                            {/* Default Styles Section */}
+                                            {customStyles.length > 0 && (
+                                                <div className="col-span-2 text-[10px] font-bold text-slate-500 mt-2 mb-1 border-b border-glass-border pb-1">
+                                                    Predefinidos
+                                                </div>
+                                            )}
                                             {STYLE_PRESETS.map(preset => (
                                                 <button
                                                     key={preset.id}
@@ -339,46 +548,179 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                 </div>
                             )}
 
+
                             {activeTab === 'gallery' && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    {artLibrary.map(item => (
-                                        <div key={item.id} className="relative group aspect-square bg-cosmic-800 rounded-lg overflow-hidden border border-glass-border cursor-pointer" onClick={() => setPreviewImage(item.imageBase64)}>
-                                            <img src={item.imageBase64} alt={item.name} className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center bg-cosmic-800 p-2 rounded-lg border border-glass-border">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setIsSelectionMode(!isSelectionMode);
+                                                    setSelectedItems(new Set());
+                                                }}
+                                                className={`p-1.5 rounded-md transition-colors flex items-center gap-2 text-xs font-bold ${isSelectionMode ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                                            >
+                                                {isSelectionMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                                {isSelectionMode ? 'Cancelar Selección' : 'Seleccionar Varios'}
+                                            </button>
+                                            {isSelectionMode && (
+                                                <span className="text-xs text-slate-400">
+                                                    {selectedItems.size} seleccionados
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {isSelectionMode && selectedItems.size > 0 && (
+                                            <div className="flex items-center gap-1">
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); deleteArtTemplate(item.id); }}
-                                                    className="p-1.5 bg-red-500/80 text-white rounded-full hover:bg-red-600"
+                                                    onClick={() => handleBulkFeedback('like')}
+                                                    className="p-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-md transition-colors"
+                                                    title="Me gusta a todos"
+                                                >
+                                                    <ThumbsUp className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleBulkFeedback('dislike')}
+                                                    className="p-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-md transition-colors"
+                                                    title="No me gusta a todos"
+                                                >
+                                                    <ThumbsDown className="w-4 h-4" />
+                                                </button>
+                                                <div className="w-px h-4 bg-slate-600 mx-1"></div>
+                                                <button
+                                                    onClick={handleBulkDelete}
+                                                    className="p-1.5 bg-slate-700 hover:bg-red-900/50 text-slate-300 hover:text-red-400 rounded-md transition-colors"
+                                                    title="Eliminar seleccionados"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
-                                        </div>
-                                    ))}
-                                    {artLibrary.length === 0 && (
-                                        <div className="col-span-2 text-center py-8 text-slate-500 text-sm">
-                                            No hay imágenes guardadas.
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {artLibrary.map(item => (
+                                            <div
+                                                key={item.id}
+                                                className={`relative group aspect-square bg-cosmic-800 rounded-lg overflow-hidden border cursor-pointer transition-all ${isSelectionMode && selectedItems.has(item.id)
+                                                    ? 'border-indigo-500 ring-2 ring-indigo-500/50'
+                                                    : 'border-glass-border hover:border-slate-500'
+                                                    }`}
+                                                onClick={() => {
+                                                    if (isSelectionMode) {
+                                                        toggleSelection(item.id);
+                                                    } else {
+                                                        setPreviewImage(item.imageBase64);
+                                                    }
+                                                }}
+                                            >
+                                                <img src={item.imageBase64} alt={item.name} className={`w-full h-full object-cover transition-opacity ${isSelectionMode && selectedItems.has(item.id) ? 'opacity-70' : ''}`} />
+
+                                                {/* Selection Checkbox Overlay */}
+                                                {isSelectionMode && (
+                                                    <div className="absolute top-2 right-2">
+                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedItems.has(item.id) ? 'bg-indigo-600 border-indigo-500' : 'bg-black/50 border-white/50'}`}>
+                                                            {selectedItems.has(item.id) && <Check className="w-3 h-3 text-white" />}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {!isSelectionMode && (
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                saveUserPreference('like', item.prompt, item.style, item.id);
+                                                                addLog("Feedback: Me gusta (Guardado)");
+                                                            }}
+                                                            className={`p-2 rounded-full transition-all ${preferenceMap.get(item.id) === 'like' ? 'bg-green-600 text-white scale-110 ring-2 ring-white' : 'bg-green-500/80 text-white hover:bg-green-600 hover:scale-110'}`}
+                                                            title="Me gusta"
+                                                        >
+                                                            <ThumbsUp className="w-4 h-4" fill={preferenceMap.get(item.id) === 'like' ? "currentColor" : "none"} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                saveUserPreference('dislike', item.prompt, item.style, item.id);
+                                                                addLog("Feedback: No me gusta (Guardado)");
+                                                            }}
+                                                            className={`p-2 rounded-full transition-all ${preferenceMap.get(item.id) === 'dislike' ? 'bg-red-600 text-white scale-110 ring-2 ring-white' : 'bg-red-500/80 text-white hover:bg-red-600 hover:scale-110'}`}
+                                                            title="No me gusta"
+                                                        >
+                                                            <ThumbsDown className="w-4 h-4" fill={preferenceMap.get(item.id) === 'dislike' ? "currentColor" : "none"} />
+                                                        </button>
+                                                        <div className="w-px h-6 bg-white/30 mx-1"></div>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteArtTemplate(item.id); }}
+                                                            className="p-2 bg-slate-700/80 text-white rounded-full hover:bg-slate-600 hover:scale-110 transition-all"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {artLibrary.length === 0 && (
+                                            <div className="col-span-2 text-center py-8 text-slate-500 text-sm">
+                                                No hay imágenes guardadas.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
                             {activeTab === 'upload' && (
-                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-glass-border rounded-xl bg-cosmic-800/50">
-                                    <Upload className="w-12 h-12 text-slate-500 mb-4" />
-                                    <p className="text-slate-400 text-sm mb-4">Arrastra o selecciona una imagen</p>
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        onChange={handleFileUpload}
-                                        accept="image/*"
-                                        className="hidden"
-                                    />
-                                    <button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium"
-                                    >
-                                        Seleccionar Archivo
-                                    </button>
+                                <div className="space-y-4">
+                                    <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-glass-border rounded-xl bg-cosmic-800/50">
+                                        <Upload className="w-10 h-10 text-slate-500 mb-3" />
+                                        <p className="text-slate-400 text-xs mb-3">Arrastra o selecciona una imagen de referencia</p>
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            onChange={handleFileUpload}
+                                            accept="image/*"
+                                            className="hidden"
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium"
+                                        >
+                                            Seleccionar Archivo
+                                        </button>
+                                    </div>
+
+                                    {previewImage && (
+                                        <div className="bg-cosmic-800 p-3 rounded-lg border border-glass-border">
+                                            <h3 className="text-xs font-bold text-slate-300 mb-2 flex items-center gap-2">
+                                                <Sparkles className="w-3 h-3 text-accent-400" />
+                                                Análisis de Estilo IA
+                                            </h3>
+
+                                            {!analyzedStyle ? (
+                                                <button
+                                                    onClick={handleAnalyzeStyle}
+                                                    disabled={isAnalyzing}
+                                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                                >
+                                                    {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+                                                    Analizar Estilo de esta Imagen
+                                                </button>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    <div className="p-2 bg-black/30 rounded text-[10px] text-slate-300 max-h-24 overflow-y-auto border border-glass-border">
+                                                        {analyzedStyle}
+                                                    </div>
+                                                    <button
+                                                        onClick={saveAnalyzedStyle}
+                                                        className="w-full py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                                    >
+                                                        <Save className="w-3 h-3" /> Guardar como Nuevo Estilo
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -454,6 +796,55 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                 </div>
                             )}
 
+                            {activeTab === 'learning' && (
+                                <div className="space-y-6">
+                                    <div className="bg-cosmic-800 p-4 rounded-lg border border-glass-border">
+                                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                                            <Brain className="w-4 h-4 text-accent-400" />
+                                            Perfil de Gustos (IA)
+                                        </h3>
+                                        <p className="text-xs text-slate-400 mb-4">
+                                            La IA analiza tus "Me gusta" y "No me gusta" para entender tu estilo único.
+                                        </p>
+
+                                        <div className="bg-black/30 p-3 rounded-lg border border-glass-border min-h-[100px] mb-4">
+                                            {tasteProfile ? (
+                                                <p className="text-xs text-slate-200 italic">"{tasteProfile}"</p>
+                                            ) : (
+                                                <p className="text-xs text-slate-500 text-center py-4">
+                                                    Aún no hay un perfil consolidado. Genera imágenes y vota para crear uno.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={handleConsolidate}
+                                            disabled={isConsolidating}
+                                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 mb-2"
+                                        >
+                                            {isConsolidating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                            Consolidar Aprendizaje
+                                        </button>
+                                    </div>
+
+                                    <div className="bg-cosmic-800 p-4 rounded-lg border border-glass-border">
+                                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                                            <Download className="w-4 h-4 text-green-400" />
+                                            Exportar Datos
+                                        </h3>
+                                        <p className="text-xs text-slate-400 mb-4">
+                                            Descarga tu historial de votos y tu perfil de gustos para llevarlos a otro dispositivo.
+                                        </p>
+                                        <button
+                                            onClick={handleExport}
+                                            className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                        >
+                                            <Download className="w-3 h-3" /> Descargar JSON
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     </div>
 
@@ -486,26 +877,58 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 relative z-20">
-                            <button
-                                onClick={onClose}
-                                className="px-6 py-2 text-slate-500 hover:text-slate-800 font-medium transition-colors"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleApply}
-                                disabled={!previewImage}
-                                className="px-8 py-2 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg font-bold shadow-lg flex items-center gap-2 transition-all"
-                            >
-                                <Check className="w-4 h-4" /> Aplicar al Puzzle
-                            </button>
+                        <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center relative z-20">
+
+                            {/* Feedback UI */}
+                            {previewImage && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-400 mr-2">¿Te gusta este diseño?</span>
+                                    <button
+                                        onClick={() => handleFeedback('like')}
+                                        disabled={feedbackGiven}
+                                        className={`p-2 rounded-full transition-all ${feedbackGiven
+                                            ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400'
+                                            : 'hover:bg-green-100 text-slate-400 hover:text-green-600 hover:scale-110'}`}
+                                        title="Me gusta (La IA aprenderá de esto)"
+                                    >
+                                        <ThumbsUp className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleFeedback('dislike')}
+                                        disabled={feedbackGiven}
+                                        className={`p-2 rounded-full transition-all ${feedbackGiven
+                                            ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400'
+                                            : 'hover:bg-red-100 text-slate-400 hover:text-red-600 hover:scale-110'}`}
+                                        title="No me gusta (La IA evitará esto)"
+                                    >
+                                        <ThumbsDown className="w-5 h-5" />
+                                    </button>
+                                    {feedbackGiven && <span className="text-xs text-green-600 font-medium animate-fade-in">¡Gracias!</span>}
+                                </div>
+                            )}
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={onClose}
+                                    className="px-6 py-2 text-slate-500 hover:text-slate-800 font-medium transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleApply}
+                                    disabled={!previewImage}
+                                    className="px-8 py-2 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg font-bold shadow-lg flex items-center gap-2 transition-all"
+                                >
+                                    <Check className="w-4 h-4" /> Aplicar al Puzzle
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                 </div>
             </div>
-        </div>
 
+
+        </div>
     );
 };

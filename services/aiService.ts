@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AISettings, PuzzleTheme } from "../types";
+import { AISettings, PuzzleTheme, UserPreference } from "../types";
 
 // --- Configuration ---
 const USE_BACKEND = true;
@@ -105,21 +105,27 @@ const cleanJson = (text: string) => {
 // --- API Client Implementations ---
 
 // 1. Google Gemini Client
-const callGemini = async (settings: AISettings, prompt: string, schemaType?: any): Promise<string> => {
+const callGemini = async (settings: AISettings, prompt: string, schemaType?: any, imageBase64?: string): Promise<string> => {
     if (USE_BACKEND) {
         try {
+            const body: any = {
+                provider: 'gemini',
+                model: settings.modelName,
+                prompt: prompt,
+                schema_type: schemaType
+            };
+
+            if (imageBase64) {
+                body.image = imageBase64; // Send image to backend if present
+            }
+
             const response = await fetch(BACKEND_URL, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "X-API-Key": settings.apiKey || "" // Optional: Send key if user provided one overrides backend env
+                    "X-API-Key": settings.apiKey || ""
                 },
-                body: JSON.stringify({
-                    provider: 'gemini',
-                    model: settings.modelName,
-                    prompt: prompt,
-                    schema_type: schemaType
-                })
+                body: JSON.stringify(body)
             });
 
             if (!response.ok) {
@@ -150,13 +156,64 @@ const callGemini = async (settings: AISettings, prompt: string, schemaType?: any
         config.responseSchema = schemaType;
     }
 
+    let contents: any[] = [prompt];
+    if (imageBase64) {
+        // Remove header if present (data:image/jpeg;base64,)
+        const base64Data = imageBase64.split(',')[1] || imageBase64;
+        // For @google/genai SDK, the format for inline data might be different or specific
+        // Checking documentation or common patterns:
+        // Usually: { role: 'user', parts: [{ text: ... }, { inlineData: ... }] }
+        // But generateContent can take a simple array of parts.
+
+        // Let's try the Part format for the new SDK
+        contents = [
+            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
+            { text: prompt }
+        ];
+    }
+
     const response = await ai.models.generateContent({
         model: settings.modelName || 'gemini-2.0-flash',
-        contents: prompt,
+        contents: contents,
         config: config
     });
 
     return response.text || "{}";
+};
+
+// ... (callOpenAICompatible remains unchanged) ...
+
+export const analyzeImageStyle = async (settings: AISettings, imageBase64: string): Promise<string> => {
+    const prompt = `
+        Analyze this image and describe its artistic style in a way that can be used as a prompt for an image generator.
+        Focus on:
+        1. Lighting (e.g., cinematic, soft, hard, volumetric)
+        2. Color Palette (e.g., pastel, neon, monochrome, vibrant)
+        3. Texture/Medium (e.g., oil painting, vector art, 3D render, pencil sketch)
+        4. Composition/Mood (e.g., minimalist, chaotic, serene, epic)
+        
+        Return a concise, comma-separated paragraph describing these elements. 
+        Start with "Art Style: ".
+    `;
+
+    try {
+        let response = "";
+        if (settings.provider === 'gemini') {
+            response = await callGemini(settings, prompt, undefined, imageBase64);
+        } else {
+            // For now, only Gemini supports vision in this setup easily
+            // You could extend callOpenAICompatible if using GPT-4o
+            if (settings.modelName.includes('gpt-4o') || settings.modelName.includes('claude')) {
+                // Placeholder for OpenAI Vision support if needed later
+                throw new Error("Vision only supported on Gemini for now.");
+            }
+            throw new Error("Provider does not support vision analysis.");
+        }
+        return response.trim();
+    } catch (error) {
+        console.error("Style Analysis Error:", error);
+        throw error;
+    }
 };
 
 // 2. OpenAI Compatible Client (DeepSeek, Groq, Local)
@@ -274,9 +331,9 @@ const routeRequest = async (settings: AISettings, prompt: string, schema?: any):
 export const generateWordListAI = async (settings: AISettings, topic: string, count: number, difficulty: string): Promise<string[]> => {
     const prompt = `
         Genera JSON con ${count} palabras en ESPAÑOL sobre "${topic}".
-        Reglas: Sin tildes, mayúsculas, sin frases.
-        Formato: { "words": ["PALABRA1", "PALABRA2"] }
-    `;
+                Reglas: Sin tildes, mayúsculas, sin frases.
+                    Formato: { "words": ["PALABRA1", "PALABRA2"] }
+            `;
 
     // Gemini Schema definition
     const geminiSchema = {
@@ -307,9 +364,9 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
 export const generateThemeAI = async (settings: AISettings, topic: string): Promise<PuzzleTheme | null> => {
     const prompt = `
         Generate JSON color palette for topic "${topic}".
-        Keys: primaryColor (strong), secondaryColor (pale), textColor (dark), backgroundColor (white/subtle).
-        Format: { "primaryColor": "#...", "secondaryColor": "#...", "textColor": "#...", "backgroundColor": "#..." }
-    `;
+                Keys: primaryColor(strong), secondaryColor(pale), textColor(dark), backgroundColor(white / subtle).
+                    Format: { "primaryColor": "#...", "secondaryColor": "#...", "textColor": "#...", "backgroundColor": "#..." }
+            `;
 
     const geminiSchema = {
         type: Type.OBJECT,
@@ -335,10 +392,10 @@ export const generateThemeAI = async (settings: AISettings, topic: string): Prom
 
 export const enhancePromptAI = async (settings: AISettings, originalPrompt: string): Promise<string> => {
     const prompt = `
-        Act as a professional prompt engineer for AI Image Generators (Midjourney/DALL-E 3).
+            Act as a professional prompt engineer for AI Image Generators(Midjourney / DALL - E 3).
         Enhance this simple description into a detailed, vivid prompt: "${originalPrompt}".
         Focus on lighting, texture, composition, and mood.
-        Keep it under 40 words. Return ONLY the English prompt text.
+        Keep it under 40 words.Return ONLY the English prompt text.
     `;
 
     try {
@@ -408,7 +465,7 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(`Backend SVG Error (${response.status}): ${errText}`);
+                throw new Error(`Backend SVG Error(${response.status}): ${errText} `);
             }
 
             const data = await response.json();
@@ -417,30 +474,83 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
 
         } catch (e: any) {
             console.error("Backend SVG Call Failed:", e);
-            throw new Error(`Error generando arte (Backend): ${e.message}`);
+            throw new Error(`Error generando arte(Backend): ${e.message} `);
         }
     }
-
-    // Legacy Client-Side Fallback (Should not be reached if USE_BACKEND is true and backend is up)
-    throw new Error("El backend no está disponible para generar imágenes.");
+    // Fallback if backend not used or failed
+    return "";
 };
 
+import { getUserPreferences, getTasteProfile } from "./storageService";
+
 export const createContextAwarePrompt = async (settings: AISettings, basePrompt: string, templateType: string): Promise<string> => {
-    const layoutDescription = templateType === 'tech'
-        ? "Layout: Header at top (20% height), Grid in center (60% height), Word list at bottom (20% height). Keep the center area relatively clean or low contrast to ensure text readability."
-        : "Layout: Classic Word Search. Title at top, large grid in middle, words at bottom. Design should frame the content.";
+    let layoutDescription = "";
+
+    if (templateType === 'thematic') {
+        layoutDescription = `
+            LAYOUT: FULL PAGE ART POSTER.
+        - The center area contains a puzzle grid but it should be INTEGRATED into the art(e.g.framed by trees, inside a magical portal, on a parchment).
+        - Do NOT create a plain white box.The center can have low opacity or subtle texture.
+        - Use a "Frame" or "Border" composition where the subject matter is around the edges.
+        `;
+    } else {
+        layoutDescription = `
+            LAYOUT: Standard Puzzle Background.
+        - Keep the center area(80 %) relatively clear or low contrast for text readability.
+        - Place main artistic elements on the edges / margins.
+        `;
+    }
+
+    // --- Feedback Loop Integration ---
+    let preferencesContext = "";
+    try {
+        const prefs = await getUserPreferences();
+        const likes = prefs.filter(p => p.type === 'like').slice(-5); // Last 5 likes
+        const dislikes = prefs.filter(p => p.type === 'dislike').slice(-5); // Last 5 dislikes
+
+        if (likes.length > 0) {
+            preferencesContext += "\nUSER PREFERENCES (DO MORE OF THIS):\n";
+            likes.forEach(p => preferencesContext += `- The user liked: "${p.prompt}"\n`);
+        }
+
+        if (dislikes.length > 0) {
+            preferencesContext += "\nUSER DISLIKES (AVOID THIS):\n";
+            dislikes.forEach(p => preferencesContext += `- The user disliked: "${p.prompt}"\n`);
+        }
+    } catch (e) {
+        console.warn("Failed to load user preferences for prompt context", e);
+    }
+
+    // --- Taste Profile Integration (Long Term Memory) ---
+    try {
+        const profile = await getTasteProfile();
+        if (profile) {
+            preferencesContext += `\nUSER TASTE PROFILE (LONG TERM MEMORY - PRIORITIZE THIS):\n"${profile}"\n`;
+        }
+    } catch (e) {
+        console.warn("Failed to load taste profile", e);
+    }
 
     const systemPrompt = `
-        You are an AI Art Director. Refine this image generation prompt to respect a specific layout.
-        
-        User Prompt: "${basePrompt}"
-        Layout Constraints: ${layoutDescription}
-        
-        Instructions:
-        1. Describe a background that fits the theme but keeps the "Safe Zones" (where text goes) legible.
-        2. Suggest using a "Frame", "Border", or "Vignette" style if appropriate.
-        3. Mention "low opacity" or "subtle texture" for the center area.
-        4. Return ONLY the refined prompt in English.
+            Act as an Art Director for a high - end puzzle book.
+    Refine this user prompt into a detailed image generation prompt: "${basePrompt}"
+
+    ${layoutDescription}
+
+    ${preferencesContext}
+
+    CRITICAL DESIGN CONSTRAINTS(ANTI - PATTERNS TO AVOID):
+            - NO "Office Document" aesthetic(plain white backgrounds with simple thin borders).
+            - NO "Floating Boxes"(disconnected grid / list boxes).
+    - NO generic / cheap "Tech" icons(chips, CPUs) scattered randomly.
+    - NO flat, desaturated colors.Use rich, vibrant, or cinematic lighting.
+    - NO "Word Art" or "Clip Art" style.
+    - The design must look like a Movie Poster, Book Cover, or High - Quality Illustration.
+
+                Instructions:
+            1. Describe a background that fits the theme and layout.
+    2. Suggest specific lighting and textures(e.g. "cinematic lighting", "parchment texture", "glowing nebula").
+    3. Return ONLY the refined prompt in English.
     `;
 
     try {
@@ -454,5 +564,39 @@ export const createContextAwarePrompt = async (settings: AISettings, basePrompt:
     } catch (error) {
         console.error("Context Aware Prompt Error:", error);
         return basePrompt + " " + layoutDescription;
+    }
+};
+
+export const generateTasteProfile = async (settings: AISettings, preferences: UserPreference[]): Promise<string> => {
+    if (preferences.length === 0) return "No sufficient data to generate a profile.";
+
+    const likes = preferences.filter(p => p.type === 'like').map(p => p.prompt).join("\n- ");
+    const dislikes = preferences.filter(p => p.type === 'dislike').map(p => p.prompt).join("\n- ");
+
+    const prompt = `
+        Analyze the following user preferences for art generation:
+
+        LIKED PROMPTS:
+        - ${likes}
+
+        DISLIKED PROMPTS:
+        - ${dislikes}
+
+        Create a concise "Taste Profile" (max 50 words) describing what this user prefers visually.
+        Focus on style, lighting, and mood.
+        Example: "User prefers dark, cinematic sci-fi themes with neon lighting. Dislikes minimalist or flat designs."
+    `;
+
+    try {
+        let response = "";
+        if (settings.provider === 'gemini') {
+            response = await callGemini(settings, prompt);
+        } else {
+            response = await callOpenAICompatible(settings, prompt, false);
+        }
+        return response.trim();
+    } catch (error) {
+        console.error("Taste Profile Generation Error:", error);
+        return "Error generating profile.";
     }
 };

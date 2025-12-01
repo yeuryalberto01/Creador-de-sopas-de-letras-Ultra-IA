@@ -1,4 +1,3 @@
-
 export enum Difficulty {
   EASY = 'Fácil',
   MEDIUM = 'Intermedio',
@@ -124,6 +123,7 @@ export interface AppSettings {
   id?: string;
   logicAI: AISettings; // Who generates the words?
   designAI: AISettings; // Who generates the colors/theme?
+  tasteProfile?: string; // Consolidated user preferences (AI generated)
 }
 
 export interface SavedPuzzleRecord {
@@ -141,4 +141,13 @@ export interface BookStack {
   targetCount: number; // Target number of pages (e.g. 40)
   createdAt: number;
   puzzles: SavedPuzzleRecord[];
+}
+
+export interface UserPreference {
+  id: string;
+  type: 'like' | 'dislike';
+  prompt: string;
+  styleDesc?: string;
+  artTemplateId?: string; // Link to specific gallery item
+  timestamp: number;
 }
