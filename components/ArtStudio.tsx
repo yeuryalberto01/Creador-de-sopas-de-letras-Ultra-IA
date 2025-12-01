@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArtTemplate, ImageFilters, AISettings } from '../types';
-import { generatePuzzleBackground, enhancePromptAI } from '../services/aiService';
+import { generatePuzzleBackground, enhancePromptAI, createContextAwarePrompt } from '../services/aiService';
 import { getArtLibrary, saveArtTemplate, deleteArtTemplate } from '../services/storageService';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { X, Image as ImageIcon, Upload, Sliders, Sparkles, Save, Check, Loader2, Trash2, RefreshCw, Wand2, Eye } from 'lucide-react';
@@ -13,6 +13,7 @@ interface ArtStudioProps {
     currentFilters?: ImageFilters;
     onApply: (image: string, filters: ImageFilters, templateId?: string) => void;
     aiSettings: AISettings;
+    selectedTemplate: string;
 }
 
 const DEFAULT_FILTERS: ImageFilters = {
@@ -40,7 +41,8 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
     currentImage,
     currentFilters,
     onApply,
-    aiSettings
+    aiSettings,
+    selectedTemplate
 }) => {
     const [activeTab, setActiveTab] = useState<'generate' | 'gallery' | 'upload' | 'adjust'>('generate');
     const [previewImage, setPreviewImage] = useState<string | undefined>(currentImage);
@@ -53,7 +55,6 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [useSmartDesign, setUseSmartDesign] = useState(true); // Default to Smart Design
     const [statusLog, setStatusLog] = useState<string[]>([]);
-    const [selectedTemplate, setSelectedTemplate] = useState<string>('classic');
 
     const addLog = (msg: string) => setStatusLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
 
@@ -93,16 +94,23 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
             let bgBase64: string;
 
             if (useSmartDesign) {
-                // 1. Capture Layout Mask
+                // 1. Context Aware Prompting
+                addLog("Refining prompt for layout...");
+                const contextPrompt = await createContextAwarePrompt(aiSettings, prompt, selectedTemplate);
+                addLog("Prompt refined.");
+
+                // 2. Capture Layout Mask
                 addLog("Generating layout mask...");
-                const mask = await generateLayoutMask('puzzle-sheet');
+                let mask = await generateLayoutMask('puzzle-sheet');
+
                 if (!mask) {
-                    addLog("ERROR: Mask generation failed");
-                    throw new Error("No se pudo capturar la estructura del puzzle.");
+                    addLog("WARNING: Mask generation failed. Using fallback.");
+                    // Fallback: 1x1 white pixel (everything is safe zone, might cause overlap but better than crash)
+                    mask = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
                 }
                 addLog(`Mask generated (${mask.length} chars)`);
 
-                // 2. Call Smart Design Endpoint
+                // 3. Call Smart Design Endpoint
                 const url = `${aiSettings.baseUrl}/api/ai/generate-smart-design`;
                 addLog(`Sending to: ${url}`);
 
@@ -113,13 +121,13 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                         'X-API-Key': aiSettings.apiKey || ''
                     },
                     body: JSON.stringify({
-                        prompt: prompt,
+                        prompt: contextPrompt, // Use the refined prompt
                         mask_image: mask,
                         style: style
                     })
                 });
 
-                addLog(`Response status: ${response.status}`);
+                addLog(`Response status: ${response.status} ${response.statusText}`);
                 if (!response.ok) {
                     const errorData = await response.json();
                     addLog(`API Error: ${JSON.stringify(errorData)}`);
@@ -202,15 +210,15 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
 
     return (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 w-full max-w-5xl h-[85vh] rounded-2xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden">
+            <div className="bg-cosmic-900 w-full max-w-5xl h-[85vh] rounded-2xl border border-glass-border shadow-2xl flex flex-col overflow-hidden">
 
                 {/* Header */}
-                <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-950">
+                <div className="p-4 border-b border-glass-border flex justify-between items-center bg-cosmic-950">
                     <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-indigo-400" />
-                        <h2 className="text-xl font-bold text-white">Art Studio <span className="text-xs text-indigo-400 ml-2 border border-indigo-500/30 px-2 py-0.5 rounded-full">AI Powered</span></h2>
+                        <Sparkles className="w-5 h-5 text-accent-400" />
+                        <h2 className="text-xl font-bold text-white">Art Studio <span className="text-xs text-accent-400 ml-2 border border-indigo-500/30 px-2 py-0.5 rounded-full">AI Powered</span></h2>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-cosmic-800 rounded-full transition-colors">
                         <X className="w-5 h-5 text-slate-400" />
                     </button>
                 </div>
@@ -218,31 +226,31 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                 <div className="flex-1 flex overflow-hidden">
 
                     {/* Sidebar / Controls */}
-                    <div className="w-80 bg-slate-900 border-r border-slate-700 flex flex-col">
+                    <div className="w-80 bg-cosmic-900 border-r border-glass-border flex flex-col">
 
                         {/* Tabs */}
-                        <div className="flex border-b border-slate-700">
+                        <div className="flex border-b border-glass-border">
                             <button
                                 onClick={() => setActiveTab('generate')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'generate' ? 'text-indigo-400 bg-slate-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'generate' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
                             >
                                 <Sparkles className="w-4 h-4" /> Generar
                             </button>
                             <button
                                 onClick={() => setActiveTab('gallery')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'gallery' ? 'text-indigo-400 bg-slate-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'gallery' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
                             >
                                 <ImageIcon className="w-4 h-4" /> Galería
                             </button>
                             <button
                                 onClick={() => setActiveTab('upload')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'upload' ? 'text-indigo-400 bg-slate-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'upload' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
                             >
                                 <Upload className="w-4 h-4" /> Subir
                             </button>
                             <button
                                 onClick={() => setActiveTab('adjust')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'adjust' ? 'text-indigo-400 bg-slate-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'adjust' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
                             >
                                 <Sliders className="w-4 h-4" /> Ajustar
                             </button>
@@ -256,7 +264,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     {/* Smart Design Toggle */}
                                     <div className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-lg">
                                         <div className="flex items-center justify-between mb-1">
-                                            <label className="text-xs font-bold text-indigo-300 flex items-center gap-1">
+                                            <label className="text-xs font-bold text-accent-300 flex items-center gap-1">
                                                 <Eye className="w-3 h-3" /> Diseño Inteligente
                                             </label>
                                             <button
@@ -277,7 +285,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                             <button
                                                 onClick={handleEnhancePrompt}
                                                 disabled={!prompt || isEnhancing}
-                                                className="text-[10px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                                                className="text-[10px] bg-indigo-500/10 hover:bg-accent-500/20 text-accent-400 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                                             >
                                                 {isEnhancing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
                                                 Mejorar con IA
@@ -287,36 +295,14 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
                                             placeholder={useSmartDesign ? "Ej: Enredaderas de flores rodeando el corazón..." : "Un paisaje de montañas nevadas..."}
-                                            className="w-full h-24 bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:border-indigo-500 outline-none resize-none"
+                                            className="w-full h-24 bg-cosmic-800 border border-glass-border rounded-lg p-3 text-sm text-slate-200 focus:border-indigo-500 outline-none resize-none"
                                         />
                                     </div>
 
-
-                                    {/* Template Selector */}
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 mb-2">Plantilla de Diseño</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={() => setSelectedTemplate('classic')}
-                                                className={`p-2 rounded-lg border text-left transition-all ${selectedTemplate === 'classic'
-                                                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
-                                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
-                                                    }`}
-                                            >
-                                                <div className="text-xs font-bold">Clásico</div>
-                                                <div className="text-[9px] opacity-70">Diseño estándar</div>
-                                            </button>
-                                            <button
-                                                onClick={() => setSelectedTemplate('tech')}
-                                                className={`p-2 rounded-lg border text-left transition-all ${selectedTemplate === 'tech'
-                                                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
-                                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
-                                                    }`}
-                                            >
-                                                <div className="text-xs font-bold">Tech / Dev</div>
-                                                <div className="text-[9px] opacity-70">Estilo moderno IT</div>
-                                            </button>
-                                        </div>
+                                    {/* Template Info (Read Only) */}
+                                    <div className="bg-cosmic-800 p-2 rounded border border-glass-border">
+                                        <span className="text-xs text-slate-400">Plantilla Activa: </span>
+                                        <span className="text-xs font-bold text-accent-400 uppercase">{selectedTemplate}</span>
                                     </div>
 
                                     <div>
@@ -327,8 +313,8 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                                     key={preset.id}
                                                     onClick={() => setStyle(preset.id)}
                                                     className={`p-2 rounded-lg border text-left transition-all ${style === preset.id
-                                                        ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
-                                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                                        ? 'bg-accent-600/20 border-indigo-500 text-white shadow-sm'
+                                                        : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700'
                                                         }`}
                                                 >
                                                     <div className="text-xs font-bold">{preset.label}</div>
@@ -340,14 +326,14 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <button
                                         onClick={handleGenerate}
                                         disabled={isGenerating || !prompt}
-                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2"
+                                        className="w-full py-3 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2"
                                     >
                                         {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                                         {useSmartDesign ? 'Generar Diseño Inteligente' : 'Generar Imagen'}
                                     </button>
 
                                     {/* Debug Status Display */}
-                                    <div className="mt-2 p-2 bg-black/50 rounded text-[10px] font-mono text-green-400 h-20 overflow-y-auto border border-slate-700">
+                                    <div ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} className="mt-2 p-2 bg-black/50 rounded text-[10px] font-mono text-green-400 h-20 overflow-y-auto border border-glass-border">
                                         {statusLog.map((log, i) => <div key={i}>{log}</div>)}
                                     </div>
                                 </div>
@@ -356,7 +342,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                             {activeTab === 'gallery' && (
                                 <div className="grid grid-cols-2 gap-2">
                                     {artLibrary.map(item => (
-                                        <div key={item.id} className="relative group aspect-square bg-slate-800 rounded-lg overflow-hidden border border-slate-700 cursor-pointer" onClick={() => setPreviewImage(item.imageBase64)}>
+                                        <div key={item.id} className="relative group aspect-square bg-cosmic-800 rounded-lg overflow-hidden border border-glass-border cursor-pointer" onClick={() => setPreviewImage(item.imageBase64)}>
                                             <img src={item.imageBase64} alt={item.name} className="w-full h-full object-cover" />
                                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                                 <button
@@ -377,7 +363,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                             )}
 
                             {activeTab === 'upload' && (
-                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-700 rounded-xl bg-slate-800/50">
+                                <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-glass-border rounded-xl bg-cosmic-800/50">
                                     <Upload className="w-12 h-12 text-slate-500 mb-4" />
                                     <p className="text-slate-400 text-sm mb-4">Arrastra o selecciona una imagen</p>
                                     <input
@@ -401,7 +387,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <div>
                                         <div className="flex justify-between mb-1">
                                             <label className="text-xs font-bold text-slate-400">Brillo</label>
-                                            <span className="text-xs text-indigo-400">{filters.brightness}%</span>
+                                            <span className="text-xs text-accent-400">{filters.brightness}%</span>
                                         </div>
                                         <input
                                             type="range" min="0" max="200"
@@ -413,7 +399,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <div>
                                         <div className="flex justify-between mb-1">
                                             <label className="text-xs font-bold text-slate-400">Contraste</label>
-                                            <span className="text-xs text-indigo-400">{filters.contrast}%</span>
+                                            <span className="text-xs text-accent-400">{filters.contrast}%</span>
                                         </div>
                                         <input
                                             type="range" min="0" max="200"
@@ -425,7 +411,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <div>
                                         <div className="flex justify-between mb-1">
                                             <label className="text-xs font-bold text-slate-400">Escala de Grises</label>
-                                            <span className="text-xs text-indigo-400">{filters.grayscale}%</span>
+                                            <span className="text-xs text-accent-400">{filters.grayscale}%</span>
                                         </div>
                                         <input
                                             type="range" min="0" max="100"
@@ -437,7 +423,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <div>
                                         <div className="flex justify-between mb-1">
                                             <label className="text-xs font-bold text-slate-400">Desenfoque (Blur)</label>
-                                            <span className="text-xs text-indigo-400">{filters.blur}px</span>
+                                            <span className="text-xs text-accent-400">{filters.blur}px</span>
                                         </div>
                                         <input
                                             type="range" min="0" max="20" step="0.5"
@@ -449,7 +435,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                                     <div>
                                         <div className="flex justify-between mb-1">
                                             <label className="text-xs font-bold text-slate-400">Sepia</label>
-                                            <span className="text-xs text-indigo-400">{filters.sepia}%</span>
+                                            <span className="text-xs text-accent-400">{filters.sepia}%</span>
                                         </div>
                                         <input
                                             type="range" min="0" max="100"
@@ -461,7 +447,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
 
                                     <button
                                         onClick={() => setFilters(DEFAULT_FILTERS)}
-                                        className="w-full py-2 border border-slate-600 text-slate-400 hover:bg-slate-800 rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                        className="w-full py-2 border border-slate-600 text-slate-400 hover:bg-cosmic-800 rounded-lg text-xs font-bold flex items-center justify-center gap-2"
                                     >
                                         <RefreshCw className="w-3 h-3" /> Resetear Filtros
                                     </button>
@@ -472,37 +458,45 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({
                     </div>
 
                     {/* Preview Area */}
-                    <div className="flex-1 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-950 flex flex-col">
-                        <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
-                            {previewImage ? (
-                                <div className="relative shadow-2xl max-h-full max-w-full">
-                                    <img
-                                        src={previewImage}
-                                        alt="Preview"
-                                        className="max-h-[60vh] object-contain border-4 border-white shadow-xl"
-                                        style={{ filter: getFilterString() }}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="text-slate-600 flex flex-col items-center">
-                                    <ImageIcon className="w-16 h-16 mb-4 opacity-20" />
-                                    <p>Selecciona o genera una imagen para previsualizar</p>
-                                </div>
-                            )}
+                    <div className="flex-1 bg-slate-100 flex flex-col relative">
+                        {/* Background Pattern - Subtle on light */}
+                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+
+                        <div className="flex-1 flex items-center justify-center p-8 overflow-hidden relative z-10">
+                            <div className={`relative transition-all duration-300 ${previewImage ? 'shadow-2xl' : 'border-2 border-dashed border-slate-300 bg-white/50'} p-1 bg-white rounded-sm`}>
+                                {previewImage ? (
+                                    <div className="relative bg-white">
+                                        <img
+                                            src={previewImage}
+                                            alt="Preview"
+                                            className="max-h-[60vh] object-contain border border-slate-100"
+                                            style={{ filter: getFilterString() }}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="w-96 h-96 flex flex-col items-center justify-center text-slate-400 bg-white">
+                                        <ImageIcon className="w-16 h-16 mb-4 opacity-20" />
+                                        <p className="font-medium">Vista Previa de Impresión</p>
+                                        <p className="text-xs opacity-70 mt-2 text-center px-8">
+                                            Aquí verás cómo quedará el diseño en la hoja blanca.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Footer Actions */}
-                        <div className="p-4 bg-slate-900 border-t border-slate-700 flex justify-end gap-3">
+                        <div className="p-4 bg-white border-t border-slate-200 flex justify-end gap-3 relative z-20">
                             <button
                                 onClick={onClose}
-                                className="px-6 py-2 text-slate-300 hover:text-white font-medium"
+                                className="px-6 py-2 text-slate-500 hover:text-slate-800 font-medium transition-colors"
                             >
                                 Cancelar
                             </button>
                             <button
                                 onClick={handleApply}
                                 disabled={!previewImage}
-                                className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg font-bold shadow-lg flex items-center gap-2"
+                                className="px-8 py-2 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg font-bold shadow-lg flex items-center gap-2 transition-all"
                             >
                                 <Check className="w-4 h-4" /> Aplicar al Puzzle
                             </button>

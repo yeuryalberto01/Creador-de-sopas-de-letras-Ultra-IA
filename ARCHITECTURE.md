@@ -108,3 +108,26 @@ Ahora incluye `margins` dentro de `config`.
 1.  **Dimensiones de Papel:** NUNCA modificar `width: 8.5in` y `height: 11in` en `PuzzleSheet.tsx` como base. Los márgenes deben aplicarse como *padding* interno, no reduciendo el tamaño del contenedor externo.
 2.  **Z-Index:** La imagen de fondo va en `z-0`, el contenido en `z-10`.
 3.  **Impresión:** `@media print` elimina los márgenes del navegador, por lo que los márgenes internos definidos en `PuzzleSheet` son los únicos que contarán en el papel físico.
+
+---
+
+## 6. 🎨 Sistema de Diseño (Cosmic Theme)
+
+El proyecto utiliza un sistema de diseño "Cosmic" personalizado sobre Tailwind CSS para garantizar una estética premium y consistente.
+
+### Tokens Principales
+*   **Colores Base:** `cosmic-900` (Fondo Principal), `cosmic-800` (Paneles), `cosmic-50` (Texto).
+*   **Acento:** `accent-500` (Violeta) y `accent-600` para acciones principales.
+*   **Efectos:**
+    *   `glass`: Utilidades para efectos de vidrio esmerilado (`backdrop-blur`).
+    *   `neon`: Sombras brillantes para estados de hover/focus.
+
+### Componentes UI
+*   **Botones:** Usar clases `.btn-primary` y `.btn-secondary` definidas en `index.css`.
+*   **Inputs:** Usar clase `.input-field`.
+*   **Paneles:** Usar clase `.panel-glass`.
+
+### Reglas de Estilo
+1.  **Evitar Hardcoding:** No usar colores arbitrarios (ej: `bg-[#123456]`). Usar siempre tokens `cosmic-*` o `accent-*`.
+2.  **Variables CSS:** Para colores dinámicos que cambian en tiempo de ejecución (temas de usuario), usar variables CSS (`--color-primary`) en lugar de estilos en línea siempre que sea posible.
+

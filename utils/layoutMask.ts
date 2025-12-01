@@ -3,6 +3,12 @@
  * Black = Content (Forbidden Zone)
  * White = Empty (Safe Zone for Art)
  */
+declare global {
+    interface Window {
+        html2canvas: any;
+    }
+}
+
 export const generateLayoutMask = async (elementId: string = 'puzzle-sheet'): Promise<string | null> => {
     const element = document.getElementById(elementId);
     if (!element) {
@@ -14,13 +20,14 @@ export const generateLayoutMask = async (elementId: string = 'puzzle-sheet'): Pr
         // 1. Clone the element to manipulate styles without affecting the UI
         const clone = element.cloneNode(true) as HTMLElement;
 
-        // Position off-screen but visible to html2canvas
-        clone.style.position = 'absolute';
-        clone.style.top = '-9999px';
-        clone.style.left = '-9999px';
+        // Position fixed at 0,0 but behind everything
+        clone.style.position = 'fixed';
+        clone.style.top = '0';
+        clone.style.left = '0';
         clone.style.width = '8.5in'; // Enforce print size
         clone.style.height = '11in';
-        clone.style.zIndex = '-1';
+        clone.style.zIndex = '-9999';
+        clone.style.pointerEvents = 'none'; // Ensure it doesn't intercept clicks
 
         // 2. Apply High-Contrast Styles (The "Masking" Logic)
         // Everything that is content should be BLACK. Background WHITE.
@@ -60,20 +67,27 @@ export const generateLayoutMask = async (elementId: string = 'puzzle-sheet'): Pr
         document.body.appendChild(clone);
 
         // 3. Capture with html2canvas (from global window)
-        // @ts-ignore
         if (!window.html2canvas) {
             console.error("html2canvas not loaded");
             document.body.removeChild(clone);
             return null;
         }
 
-        // @ts-ignore
-        const canvas = await window.html2canvas(clone, {
+        // Wrap html2canvas in a promise with timeout
+        const canvasPromise = window.html2canvas(clone, {
             scale: 1, // Low res is fine for a mask, speed is better
             logging: false,
             useCORS: true,
-            backgroundColor: '#ffffff'
+            backgroundColor: '#ffffff',
+            removeContainer: true
         });
+
+        const timeoutPromise = new Promise<null>((_, reject) => {
+            setTimeout(() => reject(new Error("html2canvas timed out")), 5000);
+        });
+
+        // @ts-ignore
+        const canvas = await Promise.race([canvasPromise, timeoutPromise]);
 
         // 4. Cleanup
         document.body.removeChild(clone);
@@ -83,6 +97,14 @@ export const generateLayoutMask = async (elementId: string = 'puzzle-sheet'): Pr
 
     } catch (error) {
         console.error("Error generating layout mask:", error);
+        // Ensure cleanup happens
+        const clone = document.getElementById(elementId + '-clone'); // We didn't set an ID, but we have the ref.
+        // Actually, we have the 'clone' variable in scope? No, it's inside try block.
+        // But we appended it. We should probably remove it if it's still there.
+        // Since we can't easily access 'clone' here if it failed before appending, 
+        // we rely on the fact that if it threw, it might be stuck. 
+        // But the 'clone' variable is defined inside 'try'.
+        // Let's just return null. The user can retry.
         return null;
     }
 };

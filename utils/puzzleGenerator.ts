@@ -326,7 +326,7 @@ export const generatePuzzle = (
     if (success) {
       // Fill Empty Cells
       fillEmptyCells(grid, width, height, hiddenMessage, rng);
-      return { grid, placedWords, unplacedWords: [], seed, timestamp: Date.now() };
+      return { grid, placedWords, unplacedWords: [], seed, timestamp: Date.now(), theme: generateThemeFromTopic('') };
     }
 
     // If failed, we check if this attempt was better than previous ones (more words placed? or just keep the partial result?)
@@ -403,12 +403,12 @@ export const generatePuzzle = (
       }
 
       fillEmptyCells(grid, width, height, hiddenMessage, rng);
-      return { grid, placedWords: greedyPlaced, unplacedWords: greedyUnplaced, seed, timestamp: Date.now() };
+      return { grid, placedWords: greedyPlaced, unplacedWords: greedyUnplaced, seed, timestamp: Date.now(), theme: generateThemeFromTopic('') };
     }
   }
 
   // Should not reach here due to the fallback above, but TS needs return
-  return { grid: [], placedWords: [], unplacedWords: words, seed, timestamp: Date.now() };
+  return { grid: [], placedWords: [], unplacedWords: words, seed, timestamp: Date.now(), theme: generateThemeFromTopic('') };
 };
 
 const fillEmptyCells = (grid: GridCell[][], width: number, height: number, hiddenMessage: string | undefined, rng: SeededRNG) => {

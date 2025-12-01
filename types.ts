@@ -57,6 +57,11 @@ export interface ImageFilters {
   sepia: number;      // 0-100, default 0
 }
 
+export interface ElementCoordinates {
+  x: number;
+  y: number;
+}
+
 export interface PuzzleConfig {
   title: string;
   headerLeft: string;
@@ -70,32 +75,42 @@ export interface PuzzleConfig {
   showSolution: boolean;
   seed?: string;
   styleMode: 'bw' | 'color';
-
-  // New properties for Smart/Expert features
   themeData?: PuzzleTheme;
-  maskShape?: ShapeType;
   hiddenMessage?: string;
-  fontType?: FontType;
-  margins?: PuzzleMargins;
+
+  // Appearance
   designTheme?: 'minimal' | 'classic' | 'kids' | 'modern';
   showBorders?: boolean;
-  templateId?: string;
+  margins?: PuzzleMargins;
+  fontType?: FontType;
+  maskShape?: ShapeType;
+  gridFontSizeScale?: number;
 
-  // Art/Background properties
+  // Background & Art
   backgroundImage?: string;
   backgroundStyle?: 'bw' | 'color';
   backgroundFilters?: ImageFilters;
   overlayOpacity?: number;
   textOverlayOpacity?: number;
+  templateId?: string;
+
+  // Smart Layout / Free Canvas
+  isFreeLayout?: boolean;
+  layout?: {
+    [key: string]: ElementCoordinates; // Key is element ID (title, grid, wordList, etc.)
+  };
 }
 
 export type AIProvider = 'gemini' | 'deepseek' | 'grok' | 'openai' | 'openai_compatible';
 
 export interface GeneratedPuzzle {
   grid: GridCell[][];
-  words: PlacedWord[];
+  placedWords: PlacedWord[]; // Renamed from 'words' to match generator
+  words?: PlacedWord[]; // Backward compatibility for old saves
+  unplacedWords?: string[];
   theme: PuzzleTheme;
   seed: string;
+  timestamp?: number;
 }
 
 export interface AISettings {

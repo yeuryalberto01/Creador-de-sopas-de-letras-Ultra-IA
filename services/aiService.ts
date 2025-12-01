@@ -424,3 +424,35 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
     // Legacy Client-Side Fallback (Should not be reached if USE_BACKEND is true and backend is up)
     throw new Error("El backend no está disponible para generar imágenes.");
 };
+
+export const createContextAwarePrompt = async (settings: AISettings, basePrompt: string, templateType: string): Promise<string> => {
+    const layoutDescription = templateType === 'tech'
+        ? "Layout: Header at top (20% height), Grid in center (60% height), Word list at bottom (20% height). Keep the center area relatively clean or low contrast to ensure text readability."
+        : "Layout: Classic Word Search. Title at top, large grid in middle, words at bottom. Design should frame the content.";
+
+    const systemPrompt = `
+        You are an AI Art Director. Refine this image generation prompt to respect a specific layout.
+        
+        User Prompt: "${basePrompt}"
+        Layout Constraints: ${layoutDescription}
+        
+        Instructions:
+        1. Describe a background that fits the theme but keeps the "Safe Zones" (where text goes) legible.
+        2. Suggest using a "Frame", "Border", or "Vignette" style if appropriate.
+        3. Mention "low opacity" or "subtle texture" for the center area.
+        4. Return ONLY the refined prompt in English.
+    `;
+
+    try {
+        let response = "";
+        if (settings.provider === 'gemini') {
+            response = await callGemini(settings, systemPrompt);
+        } else {
+            response = await callOpenAICompatible(settings, systemPrompt, false);
+        }
+        return response.replace(/"/g, '').trim();
+    } catch (error) {
+        console.error("Context Aware Prompt Error:", error);
+        return basePrompt + " " + layoutDescription;
+    }
+};
