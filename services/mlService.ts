@@ -52,7 +52,13 @@ export const getInitialUserProfile = (): MLUserProfile => ({
 export const updateUserProfile = async (
     currentProfile: MLUserProfile,
     features: VisualFeatures,
-    feedback: 'like' | 'dislike'
+    feedback: 'like' | 'dislike',
+    feedbackDetails?: {
+        prompt: string;
+        styleId: string;
+        reason?: string;
+        details?: string;
+    }
 ): Promise<MLUserProfile> => {
     const newProfile = { ...currentProfile, updatedAt: Date.now() };
     const weight = feedback === 'like' ? 1 : -1;
@@ -83,6 +89,21 @@ export const updateUserProfile = async (
     // Recalculate like rate (simplified)
     const totalLikes = newProfile.stylePreferences.liked.reduce((acc, curr) => acc + curr.count, 0);
     newProfile.likeRate = totalLikes / newProfile.totalFeedback;
+
+    // 4. Update History
+    if (feedbackDetails) {
+        if (!newProfile.feedbackHistory) newProfile.feedbackHistory = [];
+        newProfile.feedbackHistory.unshift({
+            timestamp: Date.now(),
+            prompt: feedbackDetails.prompt,
+            styleId: feedbackDetails.styleId,
+            rating: feedback === 'like' ? 1 : -1,
+            reason: feedbackDetails.reason,
+            details: feedbackDetails.details
+        });
+        // Keep last 50 entries
+        if (newProfile.feedbackHistory.length > 50) newProfile.feedbackHistory.pop();
+    }
 
     return newProfile;
 };

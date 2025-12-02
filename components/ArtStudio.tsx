@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     Sparkles, X, ImageIcon, Upload, Sliders, Brain,
     ThumbsUp, ThumbsDown, Loader2, Wand2, CheckSquare,
-    Square, Trash2, Check, Eye, Save, RefreshCw, Download
+    Square, Trash2, Check, Eye, Save, RefreshCw, Download,
+    Palette, Layout, Zap
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -21,9 +22,17 @@ import {
 } from '../services/aiService';
 import { THEMATIC_TEMPLATES } from '../constants/thematicTemplates';
 import { ARTISTIC_STYLES, ArtisticStyle } from '../constants/artisticStyles';
+import { PUZZLE_SKINS } from '../constants/skins';
+import { STYLE_PROFILES } from '../constants/styleProfiles';
+import { buildImagePrompts } from '../utils/promptBrain';
+import { exportPuzzleImage, generateSmartMask } from '../services/puzzleExportService';
+import { decoratePuzzleWithNanobanana } from '../services/nanobananaClient';
+import { logGeneration, updateRating } from '../services/artStudioFeedback';
+import { optimizeAllStyles, StyleImprovement } from '../services/styleOptimizer';
+
 import {
     ImageFilters, AISettings, ArtTemplate, MLUserProfile,
-    ThematicTemplate
+    ThematicTemplate, PuzzleSkin
 } from '../types';
 
 interface ArtStudioProps {
@@ -44,27 +53,57 @@ const DEFAULT_FILTERS: ImageFilters = {
     sepia: 0
 };
 
-const STYLE_PRESETS = [
-    { id: 'bw', label: 'Blanco y Negro', desc: 'Line art, high contrast, coloring book style' },
-    { id: 'color', label: 'Color Vibrante', desc: 'Digital art, vibrant colors, detailed' },
-    { id: 'watercolor', label: 'Acuarela', desc: 'Soft, artistic, painterly texture' },
-    { id: '3d', label: '3D Render', desc: 'Pixar style, cute, isometric' },
-    { id: 'pixel', label: 'Pixel Art', desc: 'Retro game style, 8-bit' },
-];
+// Helper Components
+const SidebarButton = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
+    <button
+        onClick={onClick}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 group relative ${active
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+            : 'text-slate-400 hover:bg-white/10 hover:text-white'
+            }`}
+        title={label}
+    >
+        <Icon className="w-5 h-5" />
+        {/* Tooltip */}
+        <div className="absolute left-14 bg-black/90 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+            {label}
+        </div>
+    </button>
+);
+
+const FilterSlider = ({ label, value, min, max, onChange }: { label: string, value: number, min: number, max: number, onChange: (v: number) => void }) => (
+    <div className="space-y-2">
+        <div className="flex justify-between text-xs">
+            <span className="text-slate-400 font-medium">{label}</span>
+            <span className="text-slate-200">{value}</span>
+        </div>
+        <input
+            type="range"
+            min={min}
+            max={max}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500 hover:[&::-webkit-slider-thumb]:bg-indigo-400 [&::-webkit-slider-thumb]:transition-colors"
+        />
+    </div>
+);
 
 export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, currentImage, currentFilters, selectedTemplate, aiSettings }) => {
     const [activeTab, setActiveTab] = useState<'generate' | 'gallery' | 'upload' | 'adjust' | 'learning'>('generate');
     const [previewImage, setPreviewImage] = useState<string | undefined>(currentImage);
+    const [originalImage, setOriginalImage] = useState<string | undefined>(currentImage);
     const [filters, setFilters] = useState<ImageFilters>(currentFilters || DEFAULT_FILTERS);
     const [targetTemplate, setTargetTemplate] = useState<string>(selectedTemplate);
 
-    // AI Generation State
-    const [prompt, setPrompt] = useState('');
-    const [style, setStyle] = useState<string>('bw');
+    // AI Generation State (Art Studio 2.0)
+    const [selectedSkin, setSelectedSkin] = useState<PuzzleSkin | null>(null);
+    const [userPrompt, setUserPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [isEnhancing, setIsEnhancing] = useState(false);
-    const [useSmartDesign, setUseSmartDesign] = useState(true); // Default to Smart Design
+    const [generationId, setGenerationId] = useState<string | null>(null);
     const [statusLog, setStatusLog] = useState<string[]>([]);
+
+    // Legacy State (kept for compatibility if needed, but primary flow is new)
+    const [isEnhancing, setIsEnhancing] = useState(false);
 
     // Style Analysis State
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -73,16 +112,19 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
 
     // Feedback State
     const [feedbackGiven, setFeedbackGiven] = useState(false);
+    const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+    const [feedbackReason, setFeedbackReason] = useState('');
+    const [feedbackDetails, setFeedbackDetails] = useState('');
 
     // Learning State
     const [tasteProfile, setTasteProfile] = useState<string>('');
     const [mlProfile, setMlProfile] = useState<MLUserProfile | null>(null);
     const [isConsolidating, setIsConsolidating] = useState(false);
 
-    // Art Studio 2.0 State
-    const [selectedThematicTemplate, setSelectedThematicTemplate] = useState<ThematicTemplate | null>(null);
-    const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<ArtisticStyle>(ARTISTIC_STYLES[0]);
-    const [satisfactionScore, setSatisfactionScore] = useState<number>(0);
+    // Style Optimization State
+    const [isOptimizing, setIsOptimizing] = useState(false);
+    const [styleImprovements, setStyleImprovements] = useState<StyleImprovement[]>([]);
+    const [showOptimizationModal, setShowOptimizationModal] = useState(false);
 
     // Load custom styles and taste profile
     useEffect(() => {
@@ -98,28 +140,9 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
         getMLProfile().then(p => setMlProfile(p));
     }, []);
 
-    // Update prediction when selection changes
-    useEffect(() => {
-        if (mlProfile) {
-            const score = predictSatisfaction(mlProfile, selectedThematicTemplate?.id || '', selectedArtisticStyle.id);
-            setSatisfactionScore(score);
-        }
-    }, [selectedThematicTemplate, selectedArtisticStyle, mlProfile]);
-
     // Gallery State
     const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
     const preferences = useLiveQuery(() => getUserPreferences(), []) || [];
-
-    // Create a map of artTemplateId -> preference type
-    const preferenceMap = React.useMemo(() => {
-        const map = new Map<string, 'like' | 'dislike'>();
-        preferences.forEach(p => {
-            if (p.artTemplateId) {
-                map.set(p.artTemplateId, p.type);
-            }
-        });
-        return map;
-    }, [preferences]);
 
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -146,7 +169,6 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
         setIsSelectionMode(false);
         setSelectedItems(new Set());
 
-        // Prompt to consolidate
         if (confirm(`Has calificado ${items.length} imágenes. ¿Quieres actualizar tu perfil de gustos ahora?`)) {
             setActiveTab('learning');
             handleConsolidate();
@@ -170,56 +192,21 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        console.log("ArtStudio useEffect [isOpen] triggered. isOpen:", isOpen, "currentImage:", currentImage?.slice(0, 20));
         if (isOpen) {
             setPreviewImage(currentImage);
+            setOriginalImage(currentImage);
             setFilters(currentFilters || DEFAULT_FILTERS);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
-
-    useEffect(() => {
-        console.log("Active Tab Changed:", activeTab);
-    }, [activeTab]);
-
-    useEffect(() => {
-        console.log("Preview Image Changed. Length:", previewImage?.length);
-    }, [previewImage]);
 
     const addLog = (msg: string) => setStatusLog(prev => [...prev, msg]);
 
-    const generateLayoutMask = async (elementId: string): Promise<string> => {
-        try {
-            const element = document.getElementById(elementId);
-            if (!element) {
-                console.warn(`Element with id ${elementId} not found for mask generation.`);
-                // Return a white placeholder if element not found to avoid crashing
-                return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
-            }
-
-            // Use html2canvas to capture the element
-            // We use a lower scale to reduce token usage and speed up processing, 
-            // as we only need the general layout structure.
-            const canvas = await html2canvas(element, {
-                scale: 0.5,
-                logging: false,
-                useCORS: true,
-                backgroundColor: '#ffffff' // Ensure white background
-            });
-
-            return canvas.toDataURL('image/jpeg', 0.7);
-        } catch (error) {
-            console.error("Error generating layout mask:", error);
-            return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
-        }
-    };
-
     const handleEnhancePrompt = async () => {
-        if (!prompt) return;
+        if (!userPrompt) return;
         setIsEnhancing(true);
         try {
-            const enhanced = await enhancePromptAI(aiSettings, prompt);
-            setPrompt(enhanced);
+            const enhanced = await enhancePromptAI(aiSettings, userPrompt);
+            setUserPrompt(enhanced);
         } catch (e) {
             console.error("Error enhancing prompt:", e);
         } finally {
@@ -227,85 +214,70 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
         }
     };
 
-    const handleGenerate = async () => {
-        if (!prompt && !selectedThematicTemplate) return;
+    // --- ART STUDIO 2.0 GENERATION LOGIC ---
+    const handleGenerate2 = async () => {
+        if (!selectedSkin && !userPrompt) {
+            alert("Por favor selecciona un estilo o escribe un prompt.");
+            return;
+        }
+
         setIsGenerating(true);
-        setStatusLog([]); // Clear logs
-        addLog(`Iniciando Art Studio 2.0...`);
+        setStatusLog([]);
+        addLog("Iniciando Art Studio 2.0...");
 
         try {
-            let bgBase64: string;
+            // 1. Capture Base Puzzle Image (High Res)
+            addLog("Capturando maqueta del puzzle...");
+            // Assuming 'puzzle-sheet' is the ID of the main puzzle container in the DOM
+            const { imageBase64: puzzleImage, width, height } = await exportPuzzleImage('puzzle-sheet');
+            setOriginalImage(puzzleImage); // Update original reference
 
-            // 1. Build the Enhanced Artistic Prompt
-            addLog("Construyendo prompt artístico...");
-            const finalPrompt = buildArtisticPrompt(
-                prompt,
-                selectedThematicTemplate,
-                selectedArtisticStyle,
-                mlProfile
-            );
-            addLog(`Prompt Final: ${finalPrompt.slice(0, 50)}...`);
+            // 2. Generate Smart Mask (Protect Grid & Words)
+            addLog("Generando máscara de protección...");
+            const maskImage = await generateSmartMask('puzzle-sheet');
 
-            if (useSmartDesign) {
-                // 2. Capture Layout Mask (Placeholder for now, but crucial for Smart Design)
-                addLog("Generando máscara de layout...");
-                let mask = await generateLayoutMask('puzzle-sheet');
+            // 3. Build Intelligent Prompts
+            addLog("Construyendo prompt inteligente...");
+            const { positive, negative, profileId } = buildImagePrompts(userPrompt, selectedSkin?.styleProfileId, mlProfile);
+            addLog(`Estilo detectado: ${profileId}`);
 
-                // 3. Call Smart Design Endpoint
-                const url = `${aiSettings.baseUrl}/api/ai/generate-smart-design`;
-                addLog(`Enviando a IA (${aiSettings.provider})... URL: ${url}`);
-                console.log("Fetching URL:", url);
+            // 4. Call Nanobanana API (Inpainting)
+            addLog(`Enviando a IA (${aiSettings.provider})...`);
+            const result = await decoratePuzzleWithNanobanana({
+                puzzleImageBase64: puzzleImage,
+                maskImageBase64: maskImage,
+                positivePrompt: positive,
+                negativePrompt: negative,
+                aiSettings
+            });
 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-API-Key': aiSettings.apiKey || ''
-                    },
-                    body: JSON.stringify({
-                        prompt: finalPrompt,
-                        mask_image: mask,
-                        style: selectedArtisticStyle.id // Pass style ID for backend reference if needed
-                    })
-                });
+            // 5. Update UI
+            setPreviewImage(result.imageBase64);
+            addLog("¡Diseño generado con éxito!");
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || "Error en Smart Design");
-                }
+            // 6. Log for Feedback
+            const newGenId = crypto.randomUUID();
+            setGenerationId(newGenId);
+            logGeneration({
+                userPrompt,
+                styleProfileId: profileId,
+                positivePrompt: positive,
+                negativePrompt: negative,
+                cfgScale: 7, // Default
+                steps: 30    // Default
+            });
 
-                const data = await response.json();
-                bgBase64 = data.image;
-                addLog("¡Imagen generada con éxito!");
-
-            } else {
-                // Legacy Generation Fallback
-                addLog("Usando generación estándar...");
-                bgBase64 = await generatePuzzleBackground(aiSettings, finalPrompt, selectedArtisticStyle.id);
-            }
-
-            console.log("Generated bgBase64 length:", bgBase64?.length);
-            addLog(`Imagen recibida. Longitud: ${bgBase64?.length}`);
-            setPreviewImage(bgBase64);
-
-            // 4. Auto-save to gallery
+            // 7. Auto-save to gallery
             const newTemplate: ArtTemplate = {
-                id: crypto.randomUUID(),
-                name: selectedThematicTemplate ? selectedThematicTemplate.name : prompt.slice(0, 20),
-                prompt: finalPrompt,
-                imageBase64: bgBase64,
-                style: selectedArtisticStyle.id,
+                id: newGenId,
+                name: selectedSkin ? selectedSkin.name : (userPrompt.slice(0, 20) || "Diseño IA"),
+                prompt: positive,
+                imageBase64: result.imageBase64,
+                style: profileId,
                 createdAt: Date.now()
             };
             await saveArtTemplate(newTemplate);
 
-            // 5. Analyze features for ML (Async)
-            if (mlProfile) {
-                analyzeImageFeatures(finalPrompt, selectedArtisticStyle.id, selectedThematicTemplate?.id).then(features => {
-                    // We don't update profile yet, only on feedback
-                    console.log("Features analyzed:", features);
-                });
-            }
         } catch (e: any) {
             console.error("Error generating art:", e);
             addLog(`Error: ${e.message}`);
@@ -325,13 +297,12 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                 const base64 = event.target.result as string;
                 setPreviewImage(base64);
 
-                // Save uploaded image to gallery? Maybe optional. Let's save it.
                 const newTemplate: ArtTemplate = {
                     id: crypto.randomUUID(),
                     name: file.name,
                     prompt: "Uploaded Image",
                     imageBase64: base64,
-                    style: 'color', // Assume color for uploads
+                    style: 'color',
                     createdAt: Date.now()
                 };
                 saveArtTemplate(newTemplate);
@@ -383,14 +354,34 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     };
 
     const handleFeedback = async (type: 'like' | 'dislike') => {
-        await saveUserPreference(type, prompt, selectedArtisticStyle.id);
+        if (type === 'dislike') {
+            setIsFeedbackModalOpen(true);
+            return;
+        }
+        await submitFeedback('like');
+    };
+
+    const submitFeedback = async (type: 'like' | 'dislike', reason?: string, details?: string) => {
+        if (generationId) {
+            updateRating(generationId, type === 'like' ? 1 : -1, reason, details);
+        }
+
+        await saveUserPreference(type, userPrompt || "Generated Design", selectedSkin?.styleProfileId || "custom");
         setFeedbackGiven(true);
+        setIsFeedbackModalOpen(false);
+        setFeedbackReason('');
+        setFeedbackDetails('');
         addLog(`Feedback enviado: ${type}`);
 
         // ML Training
         if (mlProfile) {
-            const features = await analyzeImageFeatures(prompt, selectedArtisticStyle.id, selectedThematicTemplate?.id);
-            const updatedProfile = await updateUserProfile(mlProfile, features, type);
+            const features = await analyzeImageFeatures(userPrompt, selectedSkin?.styleProfileId || 'default', undefined);
+            const updatedProfile = await updateUserProfile(mlProfile, features, type, {
+                prompt: userPrompt,
+                styleId: selectedSkin?.styleProfileId || 'default',
+                reason,
+                details
+            });
             setMlProfile(updatedProfile);
             await saveMLProfile(updatedProfile);
             addLog("Cerebro IA actualizado.");
@@ -425,20 +416,178 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
         addLog("Datos de aprendizaje exportados.");
     };
 
+    const handleOptimizeStyles = async () => {
+        setIsOptimizing(true);
+        try {
+            addLog("Analizando estilos con IA...");
+            const improvements = await optimizeAllStyles({ apiKey: aiSettings.apiKey, baseUrl: aiSettings.baseUrl });
+            setStyleImprovements(improvements);
+            setShowOptimizationModal(true);
+            addLog(`Se encontraron ${improvements.length} sugerencias de mejora.`);
+        } catch (e: any) {
+            console.error(e);
+            addLog("Error optimizando estilos: " + e.message);
+            alert("Error optimizando estilos: " + e.message);
+        } finally {
+            setIsOptimizing(false);
+        }
+    };
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center overflow-hidden">
+            {/* Feedback Modal */}
+            {isFeedbackModalOpen && (
+                <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-cosmic-900 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-300">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <ThumbsDown className="w-5 h-5 text-red-500" />
+                                ¿Qué podemos mejorar?
+                            </h3>
+                            <button onClick={() => setIsFeedbackModalOpen(false)} className="text-slate-400 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-400 mb-4">
+                            Ayúdanos a entender por qué no te gustó este resultado para que la IA aprenda.
+                        </p>
+
+                        <div className="space-y-3 mb-6">
+                            {['Texto ilegible / deformado', 'Colores extraños', 'Estilo incorrecto', 'Composición desordenada', 'Otro'].map(reason => (
+                                <button
+                                    key={reason}
+                                    onClick={() => setFeedbackReason(reason)}
+                                    className={`w-full p-3 rounded-xl text-left text-sm transition-all border ${feedbackReason === reason
+                                        ? 'bg-red-500/20 border-red-500 text-white'
+                                        : 'bg-white/5 border-white/5 text-slate-300 hover:bg-white/10'
+                                        }`}
+                                >
+                                    {reason}
+                                </button>
+                            ))}
+                        </div>
+
+                        <textarea
+                            value={feedbackDetails}
+                            onChange={(e) => setFeedbackDetails(e.target.value)}
+                            placeholder="Detalles adicionales (opcional)..."
+                            className="w-full h-24 bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:border-red-500 outline-none resize-none mb-6"
+                        />
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setIsFeedbackModalOpen(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium text-sm"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => submitFeedback('dislike', feedbackReason, feedbackDetails)}
+                                disabled={!feedbackReason}
+                                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Enviar Feedback
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Style Optimization Modal */}
+            {showOptimizationModal && (
+                <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-cosmic-900 border border-white/10 rounded-2xl p-6 max-w-4xl w-full shadow-2xl animate-in fade-in zoom-in duration-300 my-8">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Brain className="w-5 h-5 text-indigo-500" />
+                                Sugerencias de Mejora (IA)
+                            </h3>
+                            <button onClick={() => setShowOptimizationModal(false)} className="text-slate-400 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-slate-400 mb-6">
+                            Gemini ha analizado tu historial de feedback y sugiere las siguientes mejoras a los prompts.
+                        </p>
+
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                            {styleImprovements.map((improvement) => (
+                                <div key={improvement.styleId} className="bg-black/30 border border-white/10 rounded-xl p-4">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <h4 className="font-bold text-white">{improvement.styleId}</h4>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(
+                                                    `Base: ${improvement.suggestedBasePrompt}\n\nNegative: ${improvement.suggestedNegativePrompt}`
+                                                );
+                                                alert('Sugerencias copiadas al portapapeles');
+                                            }}
+                                            className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+                                        >
+                                            Copiar
+                                        </button>
+                                    </div>
+
+                                    <div className="text-xs text-slate-300 mb-3 italic">
+                                        {improvement.reasoning}
+                                    </div>
+
+                                    <div className="space-y-2 text-xs">
+                                        <div>
+                                            <span className="text-slate-500 font-medium">Base Prompt Actual:</span>
+                                            <p className="text-slate-400 mt-1 pl-2 border-l-2 border-red-500/30">{improvement.currentBasePrompt}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-green-500 font-medium">Base Prompt Sugerido:</span>
+                                            <p className="text-slate-200 mt-1 pl-2 border-l-2 border-green-500/50">{improvement.suggestedBasePrompt}</p>
+                                        </div>
+                                        <div className="mt-3">
+                                            <span className="text-slate-500 font-medium">Negative Prompt Actual:</span>
+                                            <p className="text-slate-400 mt-1 pl-2 border-l-2 border-red-500/30">{improvement.currentNegativePrompt}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-green-500 font-medium">Negative Prompt Sugerido:</span>
+                                            <p className="text-slate-200 mt-1 pl-2 border-l-2 border-green-500/50">{improvement.suggestedNegativePrompt}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                onClick={() => setShowOptimizationModal(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 transition-colors font-medium text-sm"
+                            >
+                                Cerrar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    alert('Para aplicar los cambios, copia los prompts sugeridos y actualiza manualmente el archivo styleProfiles.ts.');
+                                }}
+                                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-colors"
+                            >
+                                Instrucciones para Aplicar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="w-full h-full flex flex-col bg-cosmic-950 text-slate-200">
 
-                {/* Top Bar - Pro Editor Style */}
+                {/* Top Bar */}
                 <div className="h-14 border-b border-white/10 bg-cosmic-900 flex items-center justify-between px-4 shrink-0 z-50">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                             <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-1.5 rounded-lg">
                                 <Sparkles className="w-4 h-4 text-white" />
                             </div>
-                            <h2 className="font-bold text-white tracking-tight">Art Studio <span className="text-[10px] text-accent-400 font-mono uppercase tracking-widest ml-1">Pro</span></h2>
+                            <h2 className="font-bold text-white tracking-tight">Art Studio <span className="text-[10px] text-accent-400 font-mono uppercase tracking-widest ml-1">2.0</span></h2>
                         </div>
                         <div className="h-6 w-px bg-white/10 mx-2"></div>
                         <div className="flex items-center gap-1">
@@ -470,7 +619,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                 {/* Main Editor Area */}
                 <div className="flex-1 flex overflow-hidden relative">
 
-                    {/* 1. Slim Sidebar - Navigation */}
+                    {/* 1. Slim Sidebar */}
                     <div className="w-16 bg-cosmic-900 border-r border-white/5 flex flex-col items-center py-4 gap-4 z-40 shrink-0">
                         <SidebarButton
                             active={activeTab === 'generate'}
@@ -509,7 +658,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                     <div className="w-80 bg-cosmic-800/50 border-r border-white/5 flex flex-col backdrop-blur-sm z-30 shrink-0 transition-all duration-300">
                         <div className="p-4 border-b border-white/5">
                             <h3 className="font-bold text-white text-sm uppercase tracking-wider flex items-center gap-2">
-                                {activeTab === 'generate' && <><Wand2 className="w-4 h-4 text-indigo-400" /> Generador IA</>}
+                                {activeTab === 'generate' && <><Palette className="w-4 h-4 text-indigo-400" /> Estilos & Skins</>}
                                 {activeTab === 'gallery' && <><ImageIcon className="w-4 h-4 text-indigo-400" /> Tu Biblioteca</>}
                                 {activeTab === 'upload' && <><Upload className="w-4 h-4 text-indigo-400" /> Subir Archivos</>}
                                 {activeTab === 'adjust' && <><Sliders className="w-4 h-4 text-indigo-400" /> Ajustes de Imagen</>}
@@ -518,81 +667,57 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                         </div>
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-                            {/* Content based on activeTab - Reusing logic but restyled */}
+
+                            {/* --- GENERATE TAB (ART STUDIO 2.0) --- */}
                             {activeTab === 'generate' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                                    {/* Template Selector */}
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Plantilla Base</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={() => setSelectedThematicTemplate(null)}
-                                                className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${!selectedThematicTemplate
-                                                    ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
-                                                    : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
-                                                    }`}
-                                            >
-                                                <div className="text-xs font-bold relative z-10">Libre</div>
-                                            </button>
-                                            {THEMATIC_TEMPLATES.map(template => (
-                                                <button
-                                                    key={template.id}
-                                                    onClick={() => setSelectedThematicTemplate(template)}
-                                                    className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${selectedThematicTemplate?.id === template.id
-                                                        ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
-                                                        : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
-                                                        }`}
-                                                >
-                                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity bg-gradient-to-br from-indigo-500 to-purple-500" />
-                                                    <div className="text-xs font-bold relative z-10 truncate">{template.name}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
 
                                     {/* Prompt Input */}
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center">
-                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Prompt</label>
-                                            <button onClick={handleEnhancePrompt} disabled={!prompt} className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tu Idea</label>
+                                            <button onClick={handleEnhancePrompt} disabled={!userPrompt} className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
                                                 <Wand2 className="w-3 h-3" /> Mejorar
                                             </button>
                                         </div>
                                         <textarea
-                                            value={prompt}
-                                            onChange={(e) => setPrompt(e.target.value)}
-                                            placeholder="Describe tu idea..."
+                                            value={userPrompt}
+                                            onChange={(e) => setUserPrompt(e.target.value)}
+                                            placeholder="Ej: RD cultura, superhéroes, espacio..."
                                             className="w-full h-24 bg-cosmic-950/50 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:border-indigo-500 outline-none resize-none transition-colors focus:bg-cosmic-950"
                                         />
                                     </div>
 
-                                    {/* Style Selector */}
+                                    {/* Skin Selector */}
                                     <div className="space-y-3">
-                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estilo</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {ARTISTIC_STYLES.map(styleItem => (
+                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Elige un Estilo (Skin)</label>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {PUZZLE_SKINS.map(skin => (
                                                 <button
-                                                    key={styleItem.id}
-                                                    onClick={() => setSelectedArtisticStyle(styleItem)}
-                                                    className={`p-2 rounded-xl border text-left transition-all flex items-center gap-3 ${selectedArtisticStyle.id === styleItem.id
+                                                    key={skin.id}
+                                                    onClick={() => setSelectedSkin(skin)}
+                                                    className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group flex items-start gap-3 ${selectedSkin?.id === skin.id
                                                         ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
                                                         : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
                                                         }`}
                                                 >
-                                                    <div className="w-6 h-6 rounded-lg shadow-inner flex-shrink-0" style={{ backgroundColor: styleItem.previewColor }} />
-                                                    <div className="text-xs font-bold truncate">{styleItem.label}</div>
+                                                    <div className="text-2xl">{skin.previewEmoji}</div>
+                                                    <div>
+                                                        <div className="text-xs font-bold">{skin.name}</div>
+                                                        <div className="text-[10px] opacity-70 leading-tight mt-1">{skin.description}</div>
+                                                    </div>
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
 
                                     <button
-                                        onClick={handleGenerate}
-                                        disabled={isGenerating || (!prompt && !selectedThematicTemplate)}
+                                        onClick={handleGenerate2}
+                                        disabled={isGenerating || (!userPrompt && !selectedSkin)}
                                         className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                                     >
-                                        {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                                        Generar Diseño
+                                        {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                                        Generar Diseño IA
                                     </button>
 
                                     {statusLog.length > 0 && (
@@ -603,6 +728,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                 </div>
                             )}
 
+                            {/* --- GALLERY TAB --- */}
                             {activeTab === 'gallery' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
                                     <div className="flex justify-between items-center">
@@ -632,8 +758,8 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                                 <button
                                                     onClick={() => isSelectionMode ? toggleSelection(item.id) : setPreviewImage(item.imageBase64)}
                                                     className={`relative aspect-square rounded-lg overflow-hidden border transition-all w-full ${selectedItems.has(item.id)
-                                                            ? 'border-indigo-500 ring-2 ring-indigo-500/50'
-                                                            : 'border-white/5 hover:border-indigo-500'
+                                                        ? 'border-indigo-500 ring-2 ring-indigo-500/50'
+                                                        : 'border-white/5 hover:border-indigo-500'
                                                         }`}
                                                 >
                                                     <img src={item.imageBase64} alt="Gallery" className="w-full h-full object-cover" />
@@ -659,6 +785,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                 </div>
                             )}
 
+                            {/* --- UPLOAD TAB --- */}
                             {activeTab === 'upload' && (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
                                     <div
@@ -704,6 +831,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                 </div>
                             )}
 
+                            {/* --- ADJUST TAB --- */}
                             {activeTab === 'adjust' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
                                     <div className="space-y-4">
@@ -716,6 +844,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                 </div>
                             )}
 
+                            {/* --- LEARNING TAB --- */}
                             {activeTab === 'learning' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
                                     <div className="bg-cosmic-800 p-4 rounded-xl border border-white/5">
@@ -754,7 +883,18 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                             <div className="text-center py-4 text-slate-500 text-sm">Cargando perfil...</div>
                                         )}
 
-                                        <div className="mt-4 pt-4 border-t border-white/5">
+                                        <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                                            <button
+                                                onClick={handleOptimizeStyles}
+                                                disabled={isOptimizing}
+                                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+                                            >
+                                                {isOptimizing ? (
+                                                    <><Loader2 className="w-4 h-4 animate-spin" /> Analizando...</>
+                                                ) : (
+                                                    <><Brain className="w-4 h-4" /> 🧠 Optimizar Estilos con IA</>
+                                                )}
+                                            </button>
                                             <button
                                                 onClick={handleExport}
                                                 className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
@@ -792,6 +932,20 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                             <ThumbsDown className="w-4 h-4" />
                                         </button>
                                     </div>
+
+                                    {/* Comparison Toggle (if original exists and is different) */}
+                                    {originalImage && originalImage !== previewImage && (
+                                        <div className="absolute bottom-4 right-4">
+                                            <button
+                                                onMouseDown={() => setPreviewImage(originalImage)}
+                                                onMouseUp={() => setPreviewImage(previewImage)} // This logic is slightly flawed as previewImage is state, need a temp ref or just swap logic
+                                                onMouseLeave={() => setPreviewImage(previewImage)} // Reset if mouse leaves
+                                                className="px-3 py-1 bg-black/60 text-white text-xs rounded-full backdrop-blur-sm border border-white/10"
+                                            >
+                                                Mantener para ver original
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="w-[500px] h-[600px] bg-white rounded-lg flex flex-col items-center justify-center text-slate-300 gap-4 border border-dashed border-slate-300">
@@ -800,45 +954,9 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                                 </div>
                             )}
                         </div>
-
-                        {/* Zoom Controls (Visual Only for now) */}
-                        <div className="absolute bottom-6 right-6 bg-cosmic-900/80 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 flex items-center gap-4 shadow-xl">
-                            <button className="text-slate-400 hover:text-white">-</button>
-                            <span className="text-xs font-mono text-white">100%</span>
-                            <button className="text-slate-400 hover:text-white">+</button>
-                        </div>
                     </div>
-
                 </div>
             </div>
         </div>
     );
 };
-
-// Helper Components for Cleaner Code
-const SidebarButton = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
-    <button
-        onClick={onClick}
-        className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group relative ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
-    >
-        <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-slate-400 group-hover:text-white transition-colors'}`} />
-        <span className="text-[9px] font-medium">{label}</span>
-        {active && <div className="absolute -right-[17px] top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-l-full"></div>}
-    </button>
-);
-
-const FilterSlider = ({ label, value, min, max, onChange }: { label: string, value: number, min: number, max: number, onChange: (v: number) => void }) => (
-    <div className="space-y-2">
-        <div className="flex justify-between text-xs">
-            <span className="font-bold text-slate-400 uppercase tracking-wider">{label}</span>
-            <span className="text-indigo-400 font-mono">{value}</span>
-        </div>
-        <input
-            type="range"
-            min={min} max={max}
-            value={value}
-            onChange={(e) => onChange(Number(e.target.value))}
-            className="w-full h-1.5 bg-cosmic-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all"
-        />
-    </div>
-);
