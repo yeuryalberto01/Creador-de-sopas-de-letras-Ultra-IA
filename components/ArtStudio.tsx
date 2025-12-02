@@ -1,9 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Image as ImageIcon, Upload, Sliders, Sparkles, Save, Check, Loader2, Trash2, RefreshCw, Wand2, Eye, ThumbsUp, ThumbsDown, Brain, Download, CheckSquare, Square } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+    Sparkles, X, ImageIcon, Upload, Sliders, Brain,
+    ThumbsUp, ThumbsDown, Loader2, Wand2, CheckSquare,
+    Square, Trash2, Check, Eye, Save, RefreshCw, Download
+} from 'lucide-react';
+import html2canvas from 'html2canvas';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { getArtLibrary, saveArtTemplate, deleteArtTemplate, saveUserPreference, exportLearningData, saveTasteProfile, getTasteProfile, getUserPreferences } from '../services/storageService';
-import { enhancePromptAI, createContextAwarePrompt, generatePuzzleBackground, analyzeImageStyle, generateTasteProfile } from '../services/aiService';
-import { ArtTemplate, ImageFilters, AISettings } from '../types';
+
+import {
+    getRecommendations, predictSatisfaction, updateUserProfile, analyzeImageFeatures
+} from '../services/mlService';
+import {
+    getArtLibrary, getUserPreferences, saveUserPreference, deleteArtTemplate,
+    saveArtTemplate, getTasteProfile, getMLProfile, saveMLProfile,
+    saveTasteProfile, exportLearningData
+} from '../services/storageService';
+import {
+    enhancePromptAI, buildArtisticPrompt, generatePuzzleBackground,
+    analyzeImageStyle, generateTasteProfile
+} from '../services/aiService';
+import { THEMATIC_TEMPLATES } from '../constants/thematicTemplates';
+import { ARTISTIC_STYLES, ArtisticStyle } from '../constants/artisticStyles';
+import {
+    ImageFilters, AISettings, ArtTemplate, MLUserProfile,
+    ThematicTemplate
+} from '../types';
 
 interface ArtStudioProps {
     isOpen: boolean;
@@ -55,7 +76,13 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
 
     // Learning State
     const [tasteProfile, setTasteProfile] = useState<string>('');
+    const [mlProfile, setMlProfile] = useState<MLUserProfile | null>(null);
     const [isConsolidating, setIsConsolidating] = useState(false);
+
+    // Art Studio 2.0 State
+    const [selectedThematicTemplate, setSelectedThematicTemplate] = useState<ThematicTemplate | null>(null);
+    const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<ArtisticStyle>(ARTISTIC_STYLES[0]);
+    const [satisfactionScore, setSatisfactionScore] = useState<number>(0);
 
     // Load custom styles and taste profile
     useEffect(() => {
@@ -68,7 +95,16 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
             }
         }
         getTasteProfile().then(p => setTasteProfile(p || ''));
+        getMLProfile().then(p => setMlProfile(p));
     }, []);
+
+    // Update prediction when selection changes
+    useEffect(() => {
+        if (mlProfile) {
+            const score = predictSatisfaction(mlProfile, selectedThematicTemplate?.id || '', selectedArtisticStyle.id);
+            setSatisfactionScore(score);
+        }
+    }, [selectedThematicTemplate, selectedArtisticStyle, mlProfile]);
 
     // Gallery State
     const artLibrary = useLiveQuery(() => getArtLibrary(), []) || [];
@@ -134,18 +170,48 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        console.log("ArtStudio useEffect [isOpen] triggered. isOpen:", isOpen, "currentImage:", currentImage?.slice(0, 20));
         if (isOpen) {
             setPreviewImage(currentImage);
             setFilters(currentFilters || DEFAULT_FILTERS);
         }
-    }, [isOpen, currentImage, currentFilters]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
+    useEffect(() => {
+        console.log("Active Tab Changed:", activeTab);
+    }, [activeTab]);
+
+    useEffect(() => {
+        console.log("Preview Image Changed. Length:", previewImage?.length);
+    }, [previewImage]);
 
     const addLog = (msg: string) => setStatusLog(prev => [...prev, msg]);
 
     const generateLayoutMask = async (elementId: string): Promise<string> => {
-        // Placeholder: return a white 1x1 pixel base64
-        // In a real implementation, this would use html2canvas on the puzzle grid
-        return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
+        try {
+            const element = document.getElementById(elementId);
+            if (!element) {
+                console.warn(`Element with id ${elementId} not found for mask generation.`);
+                // Return a white placeholder if element not found to avoid crashing
+                return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
+            }
+
+            // Use html2canvas to capture the element
+            // We use a lower scale to reduce token usage and speed up processing, 
+            // as we only need the general layout structure.
+            const canvas = await html2canvas(element, {
+                scale: 0.5,
+                logging: false,
+                useCORS: true,
+                backgroundColor: '#ffffff' // Ensure white background
+            });
+
+            return canvas.toDataURL('image/jpeg', 0.7);
+        } catch (error) {
+            console.error("Error generating layout mask:", error);
+            return "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
+        }
     };
 
     const handleEnhancePrompt = async () => {
@@ -162,45 +228,33 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     };
 
     const handleGenerate = async () => {
-        if (!prompt) return;
+        if (!prompt && !selectedThematicTemplate) return;
         setIsGenerating(true);
         setStatusLog([]); // Clear logs
-        addLog(`Starting... Smart: ${useSmartDesign}`);
+        addLog(`Iniciando Art Studio 2.0...`);
 
         try {
             let bgBase64: string;
 
-            // Check if selected style is custom
-            const customStyle = customStyles.find(s => s.id === style);
-            let finalPrompt = prompt;
-            let styleParam = style;
-
-            if (customStyle) {
-                // If custom style, append description to prompt and use 'custom' or 'color' as base style
-                finalPrompt = `${prompt}. Art Style: ${customStyle.desc}`;
-                styleParam = 'custom'; // Or whatever the backend expects for generic/custom
-                addLog(`Using Custom Style: ${customStyle.label}`);
-            }
+            // 1. Build the Enhanced Artistic Prompt
+            addLog("Construyendo prompt artístico...");
+            const finalPrompt = buildArtisticPrompt(
+                prompt,
+                selectedThematicTemplate,
+                selectedArtisticStyle,
+                mlProfile
+            );
+            addLog(`Prompt Final: ${finalPrompt.slice(0, 50)}...`);
 
             if (useSmartDesign) {
-                // 1. Context Aware Prompting
-                addLog(`Refining prompt for ${targetTemplate}...`);
-                const contextPrompt = await createContextAwarePrompt(aiSettings, finalPrompt, targetTemplate);
-                addLog("Prompt refined.");
-
-                // 2. Capture Layout Mask
-                addLog("Generating layout mask...");
+                // 2. Capture Layout Mask (Placeholder for now, but crucial for Smart Design)
+                addLog("Generando máscara de layout...");
                 let mask = await generateLayoutMask('puzzle-sheet');
-
-                if (!mask) {
-                    addLog("WARNING: Mask generation failed. Using fallback.");
-                    mask = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwH9A6KKKAP/2Q==";
-                }
-                addLog(`Mask generated (${mask.length} chars)`);
 
                 // 3. Call Smart Design Endpoint
                 const url = `${aiSettings.baseUrl}/api/ai/generate-smart-design`;
-                addLog(`Sending to: ${url}`);
+                addLog(`Enviando a IA (${aiSettings.provider})... URL: ${url}`);
+                console.log("Fetching URL:", url);
 
                 const response = await fetch(url, {
                     method: 'POST',
@@ -209,42 +263,49 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                         'X-API-Key': aiSettings.apiKey || ''
                     },
                     body: JSON.stringify({
-                        prompt: contextPrompt, // Use the refined prompt
+                        prompt: finalPrompt,
                         mask_image: mask,
-                        style: styleParam
+                        style: selectedArtisticStyle.id // Pass style ID for backend reference if needed
                     })
                 });
 
-                addLog(`Response status: ${response.status} ${response.statusText}`);
                 if (!response.ok) {
                     const errorData = await response.json();
-                    addLog(`API Error: ${JSON.stringify(errorData)}`);
                     throw new Error(errorData.detail || "Error en Smart Design");
                 }
 
                 const data = await response.json();
                 bgBase64 = data.image;
-                addLog("Image received successfully");
+                addLog("¡Imagen generada con éxito!");
 
             } else {
-                // Legacy Generation
-                addLog("Using Legacy Generation...");
-                bgBase64 = await generatePuzzleBackground(aiSettings, finalPrompt, styleParam);
+                // Legacy Generation Fallback
+                addLog("Usando generación estándar...");
+                bgBase64 = await generatePuzzleBackground(aiSettings, finalPrompt, selectedArtisticStyle.id);
             }
 
+            console.log("Generated bgBase64 length:", bgBase64?.length);
+            addLog(`Imagen recibida. Longitud: ${bgBase64?.length}`);
             setPreviewImage(bgBase64);
 
-            // Auto-save to gallery
+            // 4. Auto-save to gallery
             const newTemplate: ArtTemplate = {
                 id: crypto.randomUUID(),
-                name: prompt.slice(0, 20),
-                prompt: prompt,
+                name: selectedThematicTemplate ? selectedThematicTemplate.name : prompt.slice(0, 20),
+                prompt: finalPrompt,
                 imageBase64: bgBase64,
-                style: style,
+                style: selectedArtisticStyle.id,
                 createdAt: Date.now()
             };
             await saveArtTemplate(newTemplate);
-            setActiveTab('adjust'); // Switch to adjust to see result clearly
+
+            // 5. Analyze features for ML (Async)
+            if (mlProfile) {
+                analyzeImageFeatures(finalPrompt, selectedArtisticStyle.id, selectedThematicTemplate?.id).then(features => {
+                    // We don't update profile yet, only on feedback
+                    console.log("Features analyzed:", features);
+                });
+            }
         } catch (e: any) {
             console.error("Error generating art:", e);
             addLog(`Error: ${e.message}`);
@@ -322,13 +383,18 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     };
 
     const handleFeedback = async (type: 'like' | 'dislike') => {
-        // Find current template ID if possible (this is tricky for preview, but for gallery it's easy)
-        // For the main preview, we might not have the ID readily available unless we track it.
-        // But the user asked for GALLERY persistence.
-
-        await saveUserPreference(type, prompt, style);
+        await saveUserPreference(type, prompt, selectedArtisticStyle.id);
         setFeedbackGiven(true);
         addLog(`Feedback enviado: ${type}`);
+
+        // ML Training
+        if (mlProfile) {
+            const features = await analyzeImageFeatures(prompt, selectedArtisticStyle.id, selectedThematicTemplate?.id);
+            const updatedProfile = await updateUserProfile(mlProfile, features, type);
+            setMlProfile(updatedProfile);
+            await saveMLProfile(updatedProfile);
+            addLog("Cerebro IA actualizado.");
+        }
     };
 
     const handleConsolidate = async () => {
@@ -362,360 +428,274 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-cosmic-900 w-full max-w-5xl h-[85vh] rounded-2xl border border-glass-border shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center overflow-hidden">
+            <div className="w-full h-full flex flex-col bg-cosmic-950 text-slate-200">
 
-                {/* Header */}
-                <div className="p-4 border-b border-glass-border flex justify-between items-center bg-cosmic-950">
-                    <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-accent-400" />
-                        <h2 className="text-xl font-bold text-white">Art Studio <span className="text-xs text-accent-400 ml-2 border border-indigo-500/30 px-2 py-0.5 rounded-full">AI Powered</span></h2>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-cosmic-800 rounded-full transition-colors">
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
-
-                <div className="flex-1 flex overflow-hidden">
-
-                    {/* Sidebar / Controls */}
-                    <div className="w-80 bg-cosmic-900 border-r border-glass-border flex flex-col">
-
-                        {/* Tabs */}
-                        <div className="flex border-b border-glass-border">
-                            <button
-                                onClick={() => setActiveTab('generate')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'generate' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <Sparkles className="w-4 h-4" /> Generar
+                {/* Top Bar - Pro Editor Style */}
+                <div className="h-14 border-b border-white/10 bg-cosmic-900 flex items-center justify-between px-4 shrink-0 z-50">
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-1.5 rounded-lg">
+                                <Sparkles className="w-4 h-4 text-white" />
+                            </div>
+                            <h2 className="font-bold text-white tracking-tight">Art Studio <span className="text-[10px] text-accent-400 font-mono uppercase tracking-widest ml-1">Pro</span></h2>
+                        </div>
+                        <div className="h-6 w-px bg-white/10 mx-2"></div>
+                        <div className="flex items-center gap-1">
+                            <button className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors" title="Deshacer">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-undo-2"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11" /></svg>
                             </button>
-                            <button
-                                onClick={() => setActiveTab('gallery')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'gallery' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <ImageIcon className="w-4 h-4" /> Galería
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('upload')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'upload' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <Upload className="w-4 h-4" /> Subir
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('adjust')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'adjust' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <Sliders className="w-4 h-4" /> Ajustar
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('learning')}
-                                className={`flex-1 py-3 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'learning' ? 'text-accent-400 bg-cosmic-800 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200'}`}
-                            >
-                                <Brain className="w-4 h-4" /> Cerebro
+                            <button className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors" title="Rehacer">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-redo-2"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13" /></svg>
                             </button>
                         </div>
+                    </div>
 
-                        {/* Tab Content */}
-                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    <div className="flex items-center gap-3">
+                        <div className="text-xs text-slate-400 mr-2">
+                            {previewImage ? 'Cambios sin guardar' : 'Listo para crear'}
+                        </div>
+                        <button
+                            onClick={handleApply}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-2"
+                        >
+                            <Check className="w-4 h-4" /> Aplicar Diseño
+                        </button>
+                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
 
+                {/* Main Editor Area */}
+                <div className="flex-1 flex overflow-hidden relative">
+
+                    {/* 1. Slim Sidebar - Navigation */}
+                    <div className="w-16 bg-cosmic-900 border-r border-white/5 flex flex-col items-center py-4 gap-4 z-40 shrink-0">
+                        <SidebarButton
+                            active={activeTab === 'generate'}
+                            onClick={() => setActiveTab('generate')}
+                            icon={Sparkles}
+                            label="Diseño"
+                        />
+                        <SidebarButton
+                            active={activeTab === 'gallery'}
+                            onClick={() => setActiveTab('gallery')}
+                            icon={ImageIcon}
+                            label="Galería"
+                        />
+                        <SidebarButton
+                            active={activeTab === 'upload'}
+                            onClick={() => setActiveTab('upload')}
+                            icon={Upload}
+                            label="Subidos"
+                        />
+                        <SidebarButton
+                            active={activeTab === 'adjust'}
+                            onClick={() => setActiveTab('adjust')}
+                            icon={Sliders}
+                            label="Ajustes"
+                        />
+                        <div className="w-8 h-px bg-white/10 my-2"></div>
+                        <SidebarButton
+                            active={activeTab === 'learning'}
+                            onClick={() => setActiveTab('learning')}
+                            icon={Brain}
+                            label="IA Core"
+                        />
+                    </div>
+
+                    {/* 2. Drawer - Contextual Panel */}
+                    <div className="w-80 bg-cosmic-800/50 border-r border-white/5 flex flex-col backdrop-blur-sm z-30 shrink-0 transition-all duration-300">
+                        <div className="p-4 border-b border-white/5">
+                            <h3 className="font-bold text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                                {activeTab === 'generate' && <><Wand2 className="w-4 h-4 text-indigo-400" /> Generador IA</>}
+                                {activeTab === 'gallery' && <><ImageIcon className="w-4 h-4 text-indigo-400" /> Tu Biblioteca</>}
+                                {activeTab === 'upload' && <><Upload className="w-4 h-4 text-indigo-400" /> Subir Archivos</>}
+                                {activeTab === 'adjust' && <><Sliders className="w-4 h-4 text-indigo-400" /> Ajustes de Imagen</>}
+                                {activeTab === 'learning' && <><Brain className="w-4 h-4 text-indigo-400" /> Aprendizaje IA</>}
+                            </h3>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
+                            {/* Content based on activeTab - Reusing logic but restyled */}
                             {activeTab === 'generate' && (
-                                <div className="space-y-4">
-                                    {/* Smart Design Toggle */}
-                                    <div className="bg-indigo-500/10 border border-indigo-500/30 p-3 rounded-lg">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <label className="text-xs font-bold text-accent-300 flex items-center gap-1">
-                                                <Eye className="w-3 h-3" /> Diseño Inteligente
-                                            </label>
+                                <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    {/* Template Selector */}
+                                    <div className="space-y-3">
+                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Plantilla Base</label>
+                                        <div className="grid grid-cols-2 gap-2">
                                             <button
-                                                onClick={() => setUseSmartDesign(!useSmartDesign)}
-                                                className={`w-8 h-4 rounded-full transition-colors relative ${useSmartDesign ? 'bg-indigo-500' : 'bg-slate-700'}`}
+                                                onClick={() => setSelectedThematicTemplate(null)}
+                                                className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${!selectedThematicTemplate
+                                                    ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
+                                                    : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
+                                                    }`}
                                             >
-                                                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${useSmartDesign ? 'left-4.5 translate-x-1' : 'left-0.5'}`} />
+                                                <div className="text-xs font-bold relative z-10">Libre</div>
                                             </button>
+                                            {THEMATIC_TEMPLATES.map(template => (
+                                                <button
+                                                    key={template.id}
+                                                    onClick={() => setSelectedThematicTemplate(template)}
+                                                    className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden group ${selectedThematicTemplate?.id === template.id
+                                                        ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
+                                                        : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
+                                                        }`}
+                                                >
+                                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity bg-gradient-to-br from-indigo-500 to-purple-500" />
+                                                    <div className="text-xs font-bold relative z-10 truncate">{template.name}</div>
+                                                </button>
+                                            ))}
                                         </div>
-                                        <p className="text-[10px] text-indigo-200/60 leading-tight">
-                                            La IA "verá" tu sopa de letras y diseñará un marco que respete el texto y la forma.
-                                        </p>
                                     </div>
 
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="text-xs font-bold text-slate-400">Prompt (Descripción)</label>
-                                            <button
-                                                onClick={handleEnhancePrompt}
-                                                disabled={!prompt || isEnhancing}
-                                                className="text-[10px] bg-indigo-500/10 hover:bg-accent-500/20 text-accent-400 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                                            >
-                                                {isEnhancing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                                                Mejorar con IA
+                                    {/* Prompt Input */}
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Prompt</label>
+                                            <button onClick={handleEnhancePrompt} disabled={!prompt} className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+                                                <Wand2 className="w-3 h-3" /> Mejorar
                                             </button>
                                         </div>
                                         <textarea
                                             value={prompt}
                                             onChange={(e) => setPrompt(e.target.value)}
-                                            placeholder={useSmartDesign ? "Ej: Enredaderas de flores rodeando el corazón..." : "Un paisaje de montañas nevadas..."}
-                                            className="w-full h-24 bg-cosmic-800 border border-glass-border rounded-lg p-3 text-sm text-slate-200 focus:border-indigo-500 outline-none resize-none"
+                                            placeholder="Describe tu idea..."
+                                            className="w-full h-24 bg-cosmic-950/50 border border-white/10 rounded-xl p-3 text-sm text-slate-200 focus:border-indigo-500 outline-none resize-none transition-colors focus:bg-cosmic-950"
                                         />
                                     </div>
 
-                                    {/* Template Selection */}
-                                    <div className="bg-cosmic-800 p-3 rounded-lg border border-glass-border mb-4">
-                                        <label className="text-xs font-bold text-slate-400 mb-2 block">Modo de Diseño</label>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setTargetTemplate('classic')}
-                                                className={`flex-1 py-2 px-3 rounded text-xs font-bold transition-colors ${targetTemplate !== 'thematic'
-                                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                                                    }`}
-                                            >
-                                                Clásico / Tech
-                                            </button>
-                                            <button
-                                                onClick={() => setTargetTemplate('thematic')}
-                                                className={`flex-1 py-2 px-3 rounded text-xs font-bold transition-colors ${targetTemplate === 'thematic'
-                                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                                    : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                                                    }`}
-                                            >
-                                                Temático (Full Page)
-                                            </button>
-                                        </div>
-                                        <p className="text-[10px] text-slate-500 mt-2 leading-tight">
-                                            {targetTemplate === 'thematic'
-                                                ? "Genera un diseño de página completa donde el puzzle se integra en el arte."
-                                                : "Genera un fondo para el área del puzzle o la página, manteniendo la estructura clásica."}
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 mb-2">Estilo Artístico</label>
-                                        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                                            {/* Custom Styles Section */}
-                                            {customStyles.length > 0 && (
-                                                <div className="col-span-2 text-[10px] font-bold text-accent-400 mt-1 mb-1 border-b border-glass-border pb-1">
-                                                    Mis Estilos
-                                                </div>
-                                            )}
-                                            {customStyles.map(preset => (
+                                    {/* Style Selector */}
+                                    <div className="space-y-3">
+                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estilo</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {ARTISTIC_STYLES.map(styleItem => (
                                                 <button
-                                                    key={preset.id}
-                                                    onClick={() => setStyle(preset.id)}
-                                                    className={`p-2 rounded-lg border text-left transition-all ${style === preset.id
-                                                        ? 'bg-accent-600/20 border-indigo-500 text-white shadow-sm'
-                                                        : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700'
+                                                    key={styleItem.id}
+                                                    onClick={() => setSelectedArtisticStyle(styleItem)}
+                                                    className={`p-2 rounded-xl border text-left transition-all flex items-center gap-3 ${selectedArtisticStyle.id === styleItem.id
+                                                        ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500'
+                                                        : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5'
                                                         }`}
                                                 >
-                                                    <div className="text-xs font-bold truncate">{preset.label}</div>
-                                                    <div className="text-[9px] opacity-70 truncate">{preset.desc}</div>
-                                                </button>
-                                            ))}
-
-                                            {/* Default Styles Section */}
-                                            {customStyles.length > 0 && (
-                                                <div className="col-span-2 text-[10px] font-bold text-slate-500 mt-2 mb-1 border-b border-glass-border pb-1">
-                                                    Predefinidos
-                                                </div>
-                                            )}
-                                            {STYLE_PRESETS.map(preset => (
-                                                <button
-                                                    key={preset.id}
-                                                    onClick={() => setStyle(preset.id)}
-                                                    className={`p-2 rounded-lg border text-left transition-all ${style === preset.id
-                                                        ? 'bg-accent-600/20 border-indigo-500 text-white shadow-sm'
-                                                        : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700'
-                                                        }`}
-                                                >
-                                                    <div className="text-xs font-bold">{preset.label}</div>
-                                                    <div className="text-[9px] opacity-70">{preset.desc}</div>
+                                                    <div className="w-6 h-6 rounded-lg shadow-inner flex-shrink-0" style={{ backgroundColor: styleItem.previewColor }} />
+                                                    <div className="text-xs font-bold truncate">{styleItem.label}</div>
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
+
                                     <button
                                         onClick={handleGenerate}
-                                        disabled={isGenerating || !prompt}
-                                        className="w-full py-3 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg font-bold shadow-lg flex items-center justify-center gap-2"
+                                        disabled={isGenerating || (!prompt && !selectedThematicTemplate)}
+                                        className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                                     >
-                                        {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                        {useSmartDesign ? 'Generar Diseño Inteligente' : 'Generar Imagen'}
+                                        {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                                        Generar Diseño
                                     </button>
 
-                                    {/* Debug Status Display */}
-                                    <div ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} className="mt-2 p-2 bg-black/50 rounded text-[10px] font-mono text-green-400 h-20 overflow-y-auto border border-glass-border">
-                                        {statusLog.map((log, i) => <div key={i}>{log}</div>)}
-                                    </div>
+                                    {statusLog.length > 0 && (
+                                        <div className="p-3 bg-black/30 rounded-xl border border-white/5 text-[10px] font-mono text-emerald-400 max-h-32 overflow-y-auto">
+                                            {statusLog.map((log, i) => <div key={i} className="mb-1 last:mb-0">{log}</div>)}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-
                             {activeTab === 'gallery' && (
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center bg-cosmic-800 p-2 rounded-lg border border-glass-border">
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    setIsSelectionMode(!isSelectionMode);
-                                                    setSelectedItems(new Set());
-                                                }}
-                                                className={`p-1.5 rounded-md transition-colors flex items-center gap-2 text-xs font-bold ${isSelectionMode ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                                            >
-                                                {isSelectionMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                                                {isSelectionMode ? 'Cancelar Selección' : 'Seleccionar Varios'}
-                                            </button>
-                                            {isSelectionMode && (
-                                                <span className="text-xs text-slate-400">
-                                                    {selectedItems.size} seleccionados
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {isSelectionMode && selectedItems.size > 0 && (
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={() => handleBulkFeedback('like')}
-                                                    className="p-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-md transition-colors"
-                                                    title="Me gusta a todos"
-                                                >
-                                                    <ThumbsUp className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleBulkFeedback('dislike')}
-                                                    className="p-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-md transition-colors"
-                                                    title="No me gusta a todos"
-                                                >
-                                                    <ThumbsDown className="w-4 h-4" />
-                                                </button>
-                                                <div className="w-px h-4 bg-slate-600 mx-1"></div>
-                                                <button
-                                                    onClick={handleBulkDelete}
-                                                    className="p-1.5 bg-slate-700 hover:bg-red-900/50 text-slate-300 hover:text-red-400 rounded-md transition-colors"
-                                                    title="Eliminar seleccionados"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        )}
+                                <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    <div className="flex justify-between items-center">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tu Biblioteca</h4>
+                                        <button
+                                            onClick={() => setIsSelectionMode(!isSelectionMode)}
+                                            className={`text-[10px] px-2 py-1 rounded border transition-colors ${isSelectionMode ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-white/10 text-slate-400 hover:text-white'}`}
+                                        >
+                                            {isSelectionMode ? 'Cancelar' : 'Seleccionar'}
+                                        </button>
                                     </div>
+
+                                    {isSelectionMode && selectedItems.size > 0 && (
+                                        <div className="flex gap-2 p-2 bg-indigo-900/30 rounded-lg border border-indigo-500/30">
+                                            <button onClick={() => handleBulkFeedback('like')} className="flex-1 py-1 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded text-[10px] font-bold transition-colors">
+                                                <ThumbsUp className="w-3 h-3 mx-auto mb-1" /> Like ({selectedItems.size})
+                                            </button>
+                                            <button onClick={handleBulkDelete} className="flex-1 py-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded text-[10px] font-bold transition-colors">
+                                                <Trash2 className="w-3 h-3 mx-auto mb-1" /> Borrar ({selectedItems.size})
+                                            </button>
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-2">
                                         {artLibrary.map(item => (
-                                            <div
-                                                key={item.id}
-                                                className={`relative group aspect-square bg-cosmic-800 rounded-lg overflow-hidden border cursor-pointer transition-all ${isSelectionMode && selectedItems.has(item.id)
-                                                    ? 'border-indigo-500 ring-2 ring-indigo-500/50'
-                                                    : 'border-glass-border hover:border-slate-500'
-                                                    }`}
-                                                onClick={() => {
-                                                    if (isSelectionMode) {
-                                                        toggleSelection(item.id);
-                                                    } else {
-                                                        setPreviewImage(item.imageBase64);
-                                                    }
-                                                }}
-                                            >
-                                                <img src={item.imageBase64} alt={item.name} className={`w-full h-full object-cover transition-opacity ${isSelectionMode && selectedItems.has(item.id) ? 'opacity-70' : ''}`} />
-
-                                                {/* Selection Checkbox Overlay */}
-                                                {isSelectionMode && (
-                                                    <div className="absolute top-2 right-2">
-                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedItems.has(item.id) ? 'bg-indigo-600 border-indigo-500' : 'bg-black/50 border-white/50'}`}>
-                                                            {selectedItems.has(item.id) && <Check className="w-3 h-3 text-white" />}
+                                            <div key={item.id} className="relative group">
+                                                <button
+                                                    onClick={() => isSelectionMode ? toggleSelection(item.id) : setPreviewImage(item.imageBase64)}
+                                                    className={`relative aspect-square rounded-lg overflow-hidden border transition-all w-full ${selectedItems.has(item.id)
+                                                            ? 'border-indigo-500 ring-2 ring-indigo-500/50'
+                                                            : 'border-white/5 hover:border-indigo-500'
+                                                        }`}
+                                                >
+                                                    <img src={item.imageBase64} alt="Gallery" className="w-full h-full object-cover" />
+                                                    {!isSelectionMode && (
+                                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                            <span className="text-[10px] text-white font-bold uppercase tracking-wider">Usar</span>
                                                         </div>
-                                                    </div>
-                                                )}
-
-                                                {!isSelectionMode && (
-                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                saveUserPreference('like', item.prompt, item.style, item.id);
-                                                                addLog("Feedback: Me gusta (Guardado)");
-                                                            }}
-                                                            className={`p-2 rounded-full transition-all ${preferenceMap.get(item.id) === 'like' ? 'bg-green-600 text-white scale-110 ring-2 ring-white' : 'bg-green-500/80 text-white hover:bg-green-600 hover:scale-110'}`}
-                                                            title="Me gusta"
-                                                        >
-                                                            <ThumbsUp className="w-4 h-4" fill={preferenceMap.get(item.id) === 'like' ? "currentColor" : "none"} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                saveUserPreference('dislike', item.prompt, item.style, item.id);
-                                                                addLog("Feedback: No me gusta (Guardado)");
-                                                            }}
-                                                            className={`p-2 rounded-full transition-all ${preferenceMap.get(item.id) === 'dislike' ? 'bg-red-600 text-white scale-110 ring-2 ring-white' : 'bg-red-500/80 text-white hover:bg-red-600 hover:scale-110'}`}
-                                                            title="No me gusta"
-                                                        >
-                                                            <ThumbsDown className="w-4 h-4" fill={preferenceMap.get(item.id) === 'dislike' ? "currentColor" : "none"} />
-                                                        </button>
-                                                        <div className="w-px h-6 bg-white/30 mx-1"></div>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); deleteArtTemplate(item.id); }}
-                                                            className="p-2 bg-slate-700/80 text-white rounded-full hover:bg-slate-600 hover:scale-110 transition-all"
-                                                            title="Eliminar"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
+                                                    )}
+                                                </button>
+                                                {isSelectionMode && (
+                                                    <div className="absolute top-1 right-1 pointer-events-none">
+                                                        {selectedItems.has(item.id) ? (
+                                                            <CheckSquare className="w-4 h-4 text-indigo-500 bg-white rounded-sm" />
+                                                        ) : (
+                                                            <Square className="w-4 h-4 text-white/50 bg-black/50 rounded-sm" />
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
                                         ))}
-                                        {artLibrary.length === 0 && (
-                                            <div className="col-span-2 text-center py-8 text-slate-500 text-sm">
-                                                No hay imágenes guardadas.
-                                            </div>
-                                        )}
                                     </div>
+                                    {artLibrary.length === 0 && <div className="text-center text-slate-500 text-xs py-10">Tu galería está vacía.</div>}
                                 </div>
                             )}
 
                             {activeTab === 'upload' && (
-                                <div className="space-y-4">
-                                    <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-glass-border rounded-xl bg-cosmic-800/50">
-                                        <Upload className="w-10 h-10 text-slate-500 mb-3" />
-                                        <p className="text-slate-400 text-xs mb-3">Arrastra o selecciona una imagen de referencia</p>
-                                        <input
-                                            type="file"
-                                            ref={fileInputRef}
-                                            onChange={handleFileUpload}
-                                            accept="image/*"
-                                            className="hidden"
-                                        />
-                                        <button
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-medium"
-                                        >
-                                            Seleccionar Archivo
-                                        </button>
+                                <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    <div
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="h-40 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-3 hover:border-indigo-500/50 hover:bg-white/5 transition-all cursor-pointer group"
+                                    >
+                                        <div className="p-3 bg-white/5 rounded-full group-hover:bg-indigo-500/20 transition-colors">
+                                            <Upload className="w-6 h-6 text-slate-400 group-hover:text-indigo-400" />
+                                        </div>
+                                        <p className="text-xs text-slate-400 font-medium">Click para subir imagen</p>
                                     </div>
+                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
 
                                     {previewImage && (
-                                        <div className="bg-cosmic-800 p-3 rounded-lg border border-glass-border">
-                                            <h3 className="text-xs font-bold text-slate-300 mb-2 flex items-center gap-2">
-                                                <Sparkles className="w-3 h-3 text-accent-400" />
-                                                Análisis de Estilo IA
-                                            </h3>
-
-                                            {!analyzedStyle ? (
+                                        <div className="p-3 bg-cosmic-900/50 rounded-xl border border-white/5 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-bold text-slate-400">Análisis de Estilo</span>
                                                 <button
                                                     onClick={handleAnalyzeStyle}
                                                     disabled={isAnalyzing}
-                                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                                    className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
                                                 >
                                                     {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
-                                                    Analizar Estilo de esta Imagen
+                                                    Analizar
                                                 </button>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    <div className="p-2 bg-black/30 rounded text-[10px] text-slate-300 max-h-24 overflow-y-auto border border-glass-border">
-                                                        {analyzedStyle}
-                                                    </div>
+                                            </div>
+
+                                            {analyzedStyle && (
+                                                <div className="space-y-2 animate-in fade-in">
+                                                    <p className="text-[10px] text-slate-300 bg-black/20 p-2 rounded border border-white/5 italic">
+                                                        "{analyzedStyle}"
+                                                    </p>
                                                     <button
                                                         onClick={saveAnalyzedStyle}
-                                                        className="w-full py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                                        className="w-full py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded text-[10px] font-bold flex items-center justify-center gap-2 transition-colors"
                                                     >
-                                                        <Save className="w-3 h-3" /> Guardar como Nuevo Estilo
+                                                        <Save className="w-3 h-3" /> Guardar como Estilo
                                                     </button>
                                                 </div>
                                             )}
@@ -725,210 +705,140 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ isOpen, onClose, onApply, 
                             )}
 
                             {activeTab === 'adjust' && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-xs font-bold text-slate-400">Brillo</label>
-                                            <span className="text-xs text-accent-400">{filters.brightness}%</span>
-                                        </div>
-                                        <input
-                                            type="range" min="0" max="200"
-                                            value={filters.brightness}
-                                            onChange={(e) => setFilters({ ...filters, brightness: Number(e.target.value) })}
-                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
+                                <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    <div className="space-y-4">
+                                        <FilterSlider label="Brillo" value={filters.brightness} min={0} max={200} onChange={(v) => setFilters({ ...filters, brightness: v })} />
+                                        <FilterSlider label="Contraste" value={filters.contrast} min={0} max={200} onChange={(v) => setFilters({ ...filters, contrast: v })} />
+                                        <FilterSlider label="Saturación" value={100 - filters.grayscale} min={0} max={100} onChange={(v) => setFilters({ ...filters, grayscale: 100 - v })} />
+                                        <FilterSlider label="Desenfoque" value={filters.blur} min={0} max={20} onChange={(v) => setFilters({ ...filters, blur: v })} />
+                                        <FilterSlider label="Sepia" value={filters.sepia} min={0} max={100} onChange={(v) => setFilters({ ...filters, sepia: v })} />
                                     </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-xs font-bold text-slate-400">Contraste</label>
-                                            <span className="text-xs text-accent-400">{filters.contrast}%</span>
-                                        </div>
-                                        <input
-                                            type="range" min="0" max="200"
-                                            value={filters.contrast}
-                                            onChange={(e) => setFilters({ ...filters, contrast: Number(e.target.value) })}
-                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-xs font-bold text-slate-400">Escala de Grises</label>
-                                            <span className="text-xs text-accent-400">{filters.grayscale}%</span>
-                                        </div>
-                                        <input
-                                            type="range" min="0" max="100"
-                                            value={filters.grayscale}
-                                            onChange={(e) => setFilters({ ...filters, grayscale: Number(e.target.value) })}
-                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-xs font-bold text-slate-400">Desenfoque (Blur)</label>
-                                            <span className="text-xs text-accent-400">{filters.blur}px</span>
-                                        </div>
-                                        <input
-                                            type="range" min="0" max="20" step="0.5"
-                                            value={filters.blur}
-                                            onChange={(e) => setFilters({ ...filters, blur: Number(e.target.value) })}
-                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-xs font-bold text-slate-400">Sepia</label>
-                                            <span className="text-xs text-accent-400">{filters.sepia}%</span>
-                                        </div>
-                                        <input
-                                            type="range" min="0" max="100"
-                                            value={filters.sepia}
-                                            onChange={(e) => setFilters({ ...filters, sepia: Number(e.target.value) })}
-                                            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                        />
-                                    </div>
-
-                                    <button
-                                        onClick={() => setFilters(DEFAULT_FILTERS)}
-                                        className="w-full py-2 border border-slate-600 text-slate-400 hover:bg-cosmic-800 rounded-lg text-xs font-bold flex items-center justify-center gap-2"
-                                    >
-                                        <RefreshCw className="w-3 h-3" /> Resetear Filtros
-                                    </button>
                                 </div>
                             )}
 
                             {activeTab === 'learning' && (
-                                <div className="space-y-6">
-                                    <div className="bg-cosmic-800 p-4 rounded-lg border border-glass-border">
-                                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                                            <Brain className="w-4 h-4 text-accent-400" />
-                                            Perfil de Gustos (IA)
-                                        </h3>
-                                        <p className="text-xs text-slate-400 mb-4">
-                                            La IA analiza tus "Me gusta" y "No me gusta" para entender tu estilo único.
-                                        </p>
-
-                                        <div className="bg-black/30 p-3 rounded-lg border border-glass-border min-h-[100px] mb-4">
-                                            {tasteProfile ? (
-                                                <p className="text-xs text-slate-200 italic">"{tasteProfile}"</p>
-                                            ) : (
-                                                <p className="text-xs text-slate-500 text-center py-4">
-                                                    Aún no hay un perfil consolidado. Genera imágenes y vota para crear uno.
-                                                </p>
-                                            )}
+                                <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                                    <div className="bg-cosmic-800 p-4 rounded-xl border border-white/5">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="p-3 bg-indigo-600/20 rounded-full">
+                                                <Brain className="w-8 h-8 text-accent-400" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-white">Perfil de Gustos IA</h3>
+                                                <p className="text-sm text-slate-400">El sistema aprende de tus "Me gusta" para mejorar.</p>
+                                            </div>
                                         </div>
 
-                                        <button
-                                            onClick={handleConsolidate}
-                                            disabled={isConsolidating}
-                                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 mb-2"
-                                        >
-                                            {isConsolidating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                            Consolidar Aprendizaje
-                                        </button>
-                                    </div>
+                                        {mlProfile ? (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="bg-black/30 p-3 rounded-lg">
+                                                    <div className="text-xs font-bold text-slate-500 mb-1">Temas Favoritos</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {mlProfile.topThemes.map(theme => (
+                                                            <span key={theme} className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded text-xs border border-indigo-500/30">
+                                                                {theme}
+                                                            </span>
+                                                        ))}
+                                                        {mlProfile.topThemes.length === 0 && <span className="text-xs text-slate-600">Aún no hay datos suficientes.</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="bg-black/30 p-3 rounded-lg">
+                                                    <div className="text-xs font-bold text-slate-500 mb-1">Estadísticas</div>
+                                                    <div className="text-xs text-slate-300">
+                                                        <div>Total Feedback: <span className="text-white font-bold">{mlProfile.totalFeedback}</span></div>
+                                                        <div>Tasa de Acierto: <span className="text-green-400 font-bold">{Math.round(mlProfile.likeRate * 100)}%</span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-4 text-slate-500 text-sm">Cargando perfil...</div>
+                                        )}
 
-                                    <div className="bg-cosmic-800 p-4 rounded-lg border border-glass-border">
-                                        <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                                            <Download className="w-4 h-4 text-green-400" />
-                                            Exportar Datos
-                                        </h3>
-                                        <p className="text-xs text-slate-400 mb-4">
-                                            Descarga tu historial de votos y tu perfil de gustos para llevarlos a otro dispositivo.
-                                        </p>
-                                        <button
-                                            onClick={handleExport}
-                                            className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
-                                        >
-                                            <Download className="w-3 h-3" /> Descargar JSON
-                                        </button>
+                                        <div className="mt-4 pt-4 border-t border-white/5">
+                                            <button
+                                                onClick={handleExport}
+                                                className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"
+                                            >
+                                                <Download className="w-4 h-4" /> Exportar Datos de Aprendizaje (JSON)
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
-
                         </div>
                     </div>
 
-                    {/* Preview Area */}
-                    <div className="flex-1 bg-slate-100 flex flex-col relative">
-                        {/* Background Pattern - Subtle on light */}
-                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none"></div>
+                    {/* 3. Canvas Area - The "Work" Space */}
+                    <div className="flex-1 bg-[#1e1e2e] relative overflow-hidden flex items-center justify-center p-8">
+                        {/* Dot Pattern Background */}
+                        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
-                        <div className="flex-1 flex items-center justify-center p-8 overflow-hidden relative z-10">
-                            <div className={`relative transition-all duration-300 ${previewImage ? 'shadow-2xl' : 'border-2 border-dashed border-slate-300 bg-white/50'} p-1 bg-white rounded-sm`}>
-                                {previewImage ? (
-                                    <div className="relative bg-white">
-                                        <img
-                                            src={previewImage}
-                                            alt="Preview"
-                                            className="max-h-[60vh] object-contain border border-slate-100"
-                                            style={{ filter: getFilterString() }}
-                                        />
+                        {/* Canvas Container */}
+                        <div className="relative shadow-2xl shadow-black/50 transition-all duration-500 group">
+                            {previewImage ? (
+                                <div className="relative">
+                                    <img
+                                        src={previewImage}
+                                        alt="Canvas"
+                                        className="max-h-[80vh] max-w-full rounded-lg object-contain bg-white"
+                                        style={{ filter: getFilterString() }}
+                                    />
+                                    {/* Overlay Controls on Hover */}
+                                    <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        <button onClick={() => handleFeedback('like')} className="p-2 bg-black/60 hover:bg-green-600 text-white rounded-lg backdrop-blur-sm transition-colors">
+                                            <ThumbsUp className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => handleFeedback('dislike')} className="p-2 bg-black/60 hover:bg-red-600 text-white rounded-lg backdrop-blur-sm transition-colors">
+                                            <ThumbsDown className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                ) : (
-                                    <div className="w-96 h-96 flex flex-col items-center justify-center text-slate-400 bg-white">
-                                        <ImageIcon className="w-16 h-16 mb-4 opacity-20" />
-                                        <p className="font-medium">Vista Previa de Impresión</p>
-                                        <p className="text-xs opacity-70 mt-2 text-center px-8">
-                                            Aquí verás cómo quedará el diseño en la hoja blanca.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Footer Actions */}
-                        <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center relative z-20">
-
-                            {/* Feedback UI */}
-                            {previewImage && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-slate-400 mr-2">¿Te gusta este diseño?</span>
-                                    <button
-                                        onClick={() => handleFeedback('like')}
-                                        disabled={feedbackGiven}
-                                        className={`p-2 rounded-full transition-all ${feedbackGiven
-                                            ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400'
-                                            : 'hover:bg-green-100 text-slate-400 hover:text-green-600 hover:scale-110'}`}
-                                        title="Me gusta (La IA aprenderá de esto)"
-                                    >
-                                        <ThumbsUp className="w-5 h-5" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleFeedback('dislike')}
-                                        disabled={feedbackGiven}
-                                        className={`p-2 rounded-full transition-all ${feedbackGiven
-                                            ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400'
-                                            : 'hover:bg-red-100 text-slate-400 hover:text-red-600 hover:scale-110'}`}
-                                        title="No me gusta (La IA evitará esto)"
-                                    >
-                                        <ThumbsDown className="w-5 h-5" />
-                                    </button>
-                                    {feedbackGiven && <span className="text-xs text-green-600 font-medium animate-fade-in">¡Gracias!</span>}
+                                </div>
+                            ) : (
+                                <div className="w-[500px] h-[600px] bg-white rounded-lg flex flex-col items-center justify-center text-slate-300 gap-4 border border-dashed border-slate-300">
+                                    <ImageIcon className="w-16 h-16 opacity-20" />
+                                    <p className="text-sm font-medium opacity-50">Tu diseño aparecerá aquí</p>
                                 </div>
                             )}
+                        </div>
 
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={onClose}
-                                    className="px-6 py-2 text-slate-500 hover:text-slate-800 font-medium transition-colors"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={handleApply}
-                                    disabled={!previewImage}
-                                    className="px-8 py-2 bg-accent-600 hover:bg-accent-500 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg font-bold shadow-lg flex items-center gap-2 transition-all"
-                                >
-                                    <Check className="w-4 h-4" /> Aplicar al Puzzle
-                                </button>
-                            </div>
+                        {/* Zoom Controls (Visual Only for now) */}
+                        <div className="absolute bottom-6 right-6 bg-cosmic-900/80 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 flex items-center gap-4 shadow-xl">
+                            <button className="text-slate-400 hover:text-white">-</button>
+                            <span className="text-xs font-mono text-white">100%</span>
+                            <button className="text-slate-400 hover:text-white">+</button>
                         </div>
                     </div>
 
                 </div>
             </div>
-
-
         </div>
     );
 };
+
+// Helper Components for Cleaner Code
+const SidebarButton = ({ active, onClick, icon: Icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) => (
+    <button
+        onClick={onClick}
+        className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-200 group relative ${active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}
+    >
+        <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-slate-400 group-hover:text-white transition-colors'}`} />
+        <span className="text-[9px] font-medium">{label}</span>
+        {active && <div className="absolute -right-[17px] top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-l-full"></div>}
+    </button>
+);
+
+const FilterSlider = ({ label, value, min, max, onChange }: { label: string, value: number, min: number, max: number, onChange: (v: number) => void }) => (
+    <div className="space-y-2">
+        <div className="flex justify-between text-xs">
+            <span className="font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+            <span className="text-indigo-400 font-mono">{value}</span>
+        </div>
+        <input
+            type="range"
+            min={min} max={max}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-full h-1.5 bg-cosmic-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all"
+        />
+    </div>
+);

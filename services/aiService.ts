@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AISettings, PuzzleTheme, UserPreference } from "../types";
+import { AISettings, PuzzleTheme, UserPreference, ThematicTemplate, MLUserProfile } from "../types";
+import { ArtisticStyle } from "../constants/artisticStyles";
+import { enhancePromptWithProfile } from "./mlService";
 
 // --- Configuration ---
 const USE_BACKEND = true;
@@ -599,4 +601,47 @@ export const generateTasteProfile = async (settings: AISettings, preferences: Us
         console.error("Taste Profile Generation Error:", error);
         return "Error generating profile.";
     }
+};
+
+// --- Art Studio 2.0 Prompt Builder ---
+
+// Imports moved to top of file
+export const buildArtisticPrompt = (
+    userPrompt: string,
+    template: ThematicTemplate | null,
+    style: ArtisticStyle,
+    profile: MLUserProfile | null
+): string => {
+    let finalPrompt = "";
+
+    // 1. Base Context (Template or User)
+    if (template) {
+        finalPrompt += `Subject: ${template.basePrompt}. `;
+        if (userPrompt) finalPrompt += `Specific details: ${userPrompt}. `;
+
+        // Add random elements from template for variety
+        const randomElements = template.elements.sort(() => 0.5 - Math.random()).slice(0, 3).join(", ");
+        finalPrompt += `Featuring: ${randomElements}. `;
+    } else {
+        finalPrompt += `Subject: ${userPrompt}. `;
+    }
+
+    // 2. Style Application
+    finalPrompt += `\nArt Style: ${style.promptModifier}. `;
+
+    // 3. ML Profile Enhancements
+    if (profile) {
+        finalPrompt = enhancePromptWithProfile(finalPrompt, profile);
+    }
+
+    // 4. Quality Boosters
+    finalPrompt += "\nQuality: Masterpiece, professional, high resolution, detailed, aesthetic.";
+
+    // 5. Negative Prompt (Implicitly handled by some APIs, but good to have in text)
+    // We return just the positive prompt here, the negative one is usually sent separately or appended
+    // depending on the API. For now, we append it as a "Negative:" section if the API supports it textually,
+    // or just rely on the style's negative prompt being used elsewhere.
+    // Let's keep it clean and just return the positive prompt for now.
+
+    return finalPrompt;
 };

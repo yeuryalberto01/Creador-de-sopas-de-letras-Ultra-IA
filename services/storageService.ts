@@ -180,3 +180,36 @@ export const getTasteProfile = async (): Promise<string | undefined> => {
     const settings = await loadSettings();
     return settings.tasteProfile;
 };
+
+// --- ML Profile Storage ---
+
+import { MLUserProfile } from '../types';
+
+const createInitialUserProfile = (): MLUserProfile => ({
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    preferredThemes: [],
+    avoidedThemes: [],
+    colorPreferences: { liked: [], disliked: [], preferredTemperature: null },
+    stylePreferences: { liked: [], disliked: [] },
+    compositionPreferences: { preferred: null, complexityLevel: null },
+    totalFeedback: 0,
+    likeRate: 0,
+    topThemes: []
+});
+
+export const saveMLProfile = async (profile: MLUserProfile) => {
+    // @ts-ignore
+    await db.settings.put({ ...profile, id: 'ml_user_profile' });
+};
+
+export const getMLProfile = async (): Promise<MLUserProfile> => {
+    try {
+        const profile = await db.settings.get('ml_user_profile');
+        return profile ? (profile as unknown as MLUserProfile) : createInitialUserProfile();
+    } catch (e) {
+        console.error("Error loading ML profile", e);
+        return createInitialUserProfile();
+    }
+};

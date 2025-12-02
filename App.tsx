@@ -1024,7 +1024,7 @@ export default function App() {
         <div className="flex h-screen text-slate-200 overflow-hidden font-sans selection:bg-indigo-500/30" style={{ background: 'linear-gradient(135deg, #0a0e27 0%, #1a1535 50%, #0f051d 100%)' }}>
             <GradientDefs />
             {/* Left Sidebar - Controls */}
-            <aside style={{ width: leftPanelWidth }} className="panel-glass border-r border-white/10 flex flex-col z-30 shadow-2xl relative transition-all duration-75">
+            <aside style={{ width: leftPanelWidth }} className="panel-glass border-r border-white/10 flex flex-col z-30 shadow-2xl relative transition-all duration-75 bg-cosmic-950/80 backdrop-blur-xl">
                 {/* Drag Handle */}
                 <div
                     className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/50 transition-colors z-50 group"
@@ -1033,33 +1033,36 @@ export default function App() {
                     <div className="w-0.5 h-full bg-indigo-500/0 group-hover:bg-indigo-500/50 mx-auto transition-colors" />
                 </div>
 
-                <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-indigo-600/20 to-purple-600/20 backdrop-blur-sm">
+                <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-indigo-900/20 to-purple-900/20 backdrop-blur-sm">
                     <div className="flex items-center gap-3">
-                        <div className="bg-accent-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
-                            <BrainCircuit className="w-6 h-6 text-white" stroke="url(#gradient-gold)" />
+                        <div className="bg-gradient-to-br from-indigo-600 to-accent-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
+                            <BrainCircuit className="w-6 h-6 text-white" strokeWidth={1.5} />
                         </div>
                         <div>
-                            <h1 className="font-bold text-lg text-white leading-tight tracking-tight">SopaCreator AI</h1>
-                            <span className="text-[10px] text-accent-400 font-mono tracking-widest uppercase">Pro Edition v4.5</span>
+                            <h1 className="font-bold text-lg text-white leading-tight tracking-tight font-display">SopaCreator AI</h1>
+                            <span className="text-[10px] text-accent-400 font-mono tracking-widest uppercase flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Nano Banana Pro
+                            </span>
                         </div>
                     </div >
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                         <Tooltip text={isEditMode ? "Salir del Editor" : "Editor Visual"} position="bottom">
                             <button
                                 onClick={() => setIsEditMode(!isEditMode)}
-                                className={`p-2 rounded-lg transition-colors ${isEditMode ? 'bg-accent-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                                className={`p-2 rounded-lg transition-all ${isEditMode ? 'bg-accent-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                             >
-                                <Move className="w-5 h-5" />
+                                <Move className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip text="Diagnóstico del Sistema" position="bottom">
-                            <button onClick={() => setShowDiagnostics(true)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-emerald-400">
+                            <button onClick={() => setShowDiagnostics(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-emerald-400">
                                 <Activity className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip text="Configuración Global API" position="bottom">
-                            <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white">
-                                <Settings2 className="w-5 h-5" />
+                            <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-white">
+                                <Settings2 className="w-4 h-4" />
                             </button>
                         </Tooltip>
                     </div>
@@ -1092,35 +1095,49 @@ export default function App() {
                                 }
                             />
                         ) : (
-                            <div className="p-5 space-y-8">
+                            <div className="p-6 space-y-6">
 
-                                {/* Sección 1: Generación AI - Improved Visuals */}
-                                <div className="space-y-3 bg-gradient-to-br from-indigo-900/20 to-purple-900/20 p-4 rounded-xl border border-white/10 shadow-lg relative group transition-all hover:border-indigo-500/30">
-                                    <div className="absolute top-2 right-2 opacity-20 group-hover:opacity-100 transition-opacity duration-500">
-                                        <Sparkles className="w-12 h-12 text-indigo-500 blur-sm" />
-                                    </div>
-                                    <h2 className="text-xs font-bold text-accent-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                                        <Wand2 className="w-4 h-4" /> Generador Inteligente
-                                    </h2>
+                                {/* Sección 1: Generación AI - Nano Banana Style */}
+                                <div className="relative group">
+                                    <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
+                                    <div className="relative space-y-4 bg-cosmic-900/80 p-5 rounded-xl border border-white/10 shadow-xl">
+                                        <div className="absolute top-0 right-0 p-3 opacity-30 group-hover:opacity-100 transition-opacity duration-500">
+                                            <Sparkles className="w-8 h-8 text-indigo-400 blur-[1px]" />
+                                        </div>
 
-                                    <div className="space-y-3 relative z-10">
-                                        <label className="text-xs font-medium text-slate-400">Tema o Tópico</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={topic}
-                                                onChange={(e) => setTopic(e.target.value)}
-                                                placeholder="Ej: Dinosaurios, Espacio..."
-                                                className="flex-1 bg-cosmic-900 border border-glass-border rounded-lg px-3 py-2.5 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none text-white placeholder-slate-600 shadow-inner"
-                                                onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
-                                            />
-                                            <button
-                                                onClick={handleAiGenerate}
-                                                disabled={isGeneratingAI || !topic}
-                                                className="btn-primary p-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center w-11 h-11 rounded-lg shadow-lg shadow-indigo-500/20"
-                                            >
-                                                {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                                            </button>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="p-1.5 bg-indigo-500/20 rounded-lg">
+                                                <Wand2 className="w-4 h-4 text-indigo-400" />
+                                            </div>
+                                            <h2 className="text-xs font-bold text-white uppercase tracking-widest">
+                                                Generador Inteligente
+                                            </h2>
+                                        </div>
+
+                                        <div className="space-y-3 relative z-10">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Tema o Tópico</label>
+                                                <div className="flex gap-2">
+                                                    <div className="relative flex-1 group/input">
+                                                        <input
+                                                            type="text"
+                                                            value={topic}
+                                                            onChange={(e) => setTopic(e.target.value)}
+                                                            placeholder="Ej: Dinosaurios, Espacio..."
+                                                            className="w-full bg-cosmic-950/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all outline-none text-white placeholder-slate-600 shadow-inner group-hover/input:border-white/20"
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleAiGenerate()}
+                                                        />
+                                                        <div className="absolute inset-0 rounded-xl ring-1 ring-white/5 pointer-events-none"></div>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleAiGenerate}
+                                                        disabled={isGeneratingAI || !topic}
+                                                        className="bg-gradient-to-br from-indigo-600 to-accent-600 hover:from-indigo-500 hover:to-accent-500 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center w-12 rounded-xl shadow-lg shadow-indigo-500/20 transition-all border border-white/10"
+                                                    >
+                                                        {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin text-white" /> : <Sparkles className="w-5 h-5 text-white" />}
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1408,7 +1425,7 @@ export default function App() {
             </main >
 
             {/* Right Sidebar - Design & Export */}
-            <aside style={{ width: rightPanelWidth }} className="panel-glass border-l border-white/10 flex flex-col z-30 shadow-2xl relative">
+            <aside style={{ width: rightPanelWidth }} className="panel-glass border-l border-white/10 flex flex-col z-30 shadow-2xl relative bg-cosmic-950/80 backdrop-blur-xl">
                 {/* Drag Handle */}
                 <div
                     className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-indigo-500/50 transition-colors z-50 group"
@@ -1416,47 +1433,56 @@ export default function App() {
                 >
                     <div className="w-0.5 h-full bg-indigo-500/0 group-hover:bg-indigo-500/50 mx-auto transition-colors" />
                 </div>
-                <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-600/20 to-pink-600/20 backdrop-blur-sm">
-                    <h2 className="font-bold text-lg text-white flex items-center gap-2">
-                        <Palette className="w-5 h-5" stroke="url(#gradient-accent)" /> Diseño
+                <div className="p-6 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-900/20 to-pink-900/20 backdrop-blur-sm">
+                    <h2 className="font-bold text-lg text-white flex items-center gap-3">
+                        <div className="bg-gradient-to-br from-purple-600 to-pink-600 p-2 rounded-lg shadow-lg shadow-purple-500/20">
+                            <Palette className="w-5 h-5 text-white" />
+                        </div>
+                        Diseño Visual
                     </h2>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar p-8 space-y-8">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 space-y-8">
                     {/* Section 4: Estilo y Arte (Moved) */}
                     <section className="space-y-4">
-                        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                            <Palette className="w-3 h-3" /> Estilo Visual
+                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                            <Palette className="w-4 h-4 text-purple-400" /> Estilo & Tema
                         </h2>
 
-                        <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="grid grid-cols-2 gap-3">
                             <button
                                 onClick={() => { setStyleMode('bw'); setBackgroundImage(undefined); }}
-                                className={`p-2 rounded border flex flex-col items-center gap-1 ${styleMode === 'bw' && !backgroundImage ? 'bg-slate-700 border-white text-white' : 'bg-cosmic-800 border-glass-border text-slate-400'}`}
+                                className={`group relative p-4 rounded-xl border transition-all duration-300 overflow-hidden ${styleMode === 'bw' && !backgroundImage ? 'bg-white/10 border-white/30 shadow-lg shadow-white/5' : 'bg-cosmic-900/50 border-white/5 hover:border-white/20 hover:bg-white/5'}`}
                             >
-                                <div className="w-4 h-4 bg-white border border-black rounded-sm"></div>
-                                B/N Clásico
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="flex flex-col items-center gap-3 relative z-10">
+                                    <div className="w-8 h-8 bg-white border-2 border-slate-200 rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300"></div>
+                                    <span className={`text-xs font-bold ${styleMode === 'bw' && !backgroundImage ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>B/N Clásico</span>
+                                </div>
                             </button>
                             <button
                                 onClick={() => { setStyleMode('color'); setBackgroundImage(undefined); }}
-                                className={`p-2 rounded border flex flex-col items-center gap-1 ${styleMode === 'color' && !backgroundImage ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-cosmic-800 border-glass-border text-slate-400'}`}
+                                className={`group relative p-4 rounded-xl border transition-all duration-300 overflow-hidden ${styleMode === 'color' && !backgroundImage ? 'bg-indigo-500/20 border-indigo-500/50 shadow-lg shadow-indigo-500/20' : 'bg-cosmic-900/50 border-white/5 hover:border-indigo-500/30 hover:bg-indigo-500/10'}`}
                             >
-                                <div className="w-4 h-4 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-sm"></div>
-                                Color Digital
+                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="flex flex-col items-center gap-3 relative z-10">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300"></div>
+                                    <span className={`text-xs font-bold ${styleMode === 'color' && !backgroundImage ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>Color Digital</span>
+                                </div>
                             </button>
                         </div>
 
                         {/* New Design Theme Selector */}
-                        <div className="space-y-1 pt-2 border-t border-slate-800/50">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Tema Visual</label>
+                        <div className="space-y-2 pt-4 border-t border-white/5">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tema Visual</label>
                             <div className="grid grid-cols-2 gap-2">
                                 {(['modern', 'classic', 'kids', 'minimal'] as const).map(theme => (
                                     <button
                                         key={theme}
                                         onClick={() => { setDesignTheme(theme); setIsManualTheme(true); }}
-                                        className={`text-[10px] py-1.5 rounded border capitalize transition-all ${designTheme === theme
-                                            ? 'bg-accent-600 border-indigo-500 text-white shadow-sm'
-                                            : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700'
+                                        className={`text-xs py-2.5 px-3 rounded-lg border capitalize transition-all duration-200 font-medium ${designTheme === theme
+                                            ? 'bg-accent-600 border-accent-500 text-white shadow-lg shadow-accent-500/20'
+                                            : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5 hover:text-white hover:border-white/10'
                                             }`}
                                     >
                                         {theme}
@@ -1466,88 +1492,93 @@ export default function App() {
                         </div>
 
                         {/* Free Layout Toggle */}
-                        <div className="flex items-center justify-between bg-cosmic-800 p-2 rounded-lg mt-2 border border-glass-border">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
-                                <Layout className="w-3 h-3" /> Lienzo Libre
+                        <div className="flex items-center justify-between bg-cosmic-900/50 p-3 rounded-xl border border-white/5 hover:border-white/10 transition-colors group">
+                            <label className="text-xs font-bold text-slate-300 uppercase flex items-center gap-2 group-hover:text-white transition-colors">
+                                <Layout className="w-4 h-4 text-indigo-400" /> Lienzo Libre
                             </label>
                             <button
                                 onClick={() => setIsFreeLayout(!isFreeLayout)}
-                                className={`w-11 h-6 rounded-full transition-all relative shadow-inner ${isFreeLayout ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-slate-700'}`}
+                                className={`w-12 h-7 rounded-full transition-all relative shadow-inner ${isFreeLayout ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-slate-800'}`}
                             >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md left-1 ${isFreeLayout ? 'translate-x-5' : 'translate-x-0'}`} />
+                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-md left-1 ${isFreeLayout ? 'translate-x-5' : 'translate-x-0'}`} />
                             </button>
                         </div>
 
-                        <div className="space-y-2 pt-2 border-t border-slate-800/50">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Art Studio (IA)</label>
+                        <div className="space-y-3 pt-4 border-t border-white/5">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Art Studio (IA)</label>
                             <button
                                 onClick={() => setShowArtStudio(true)}
-                                className="w-full btn-primary flex items-center justify-center gap-2 group"
+                                className="w-full relative overflow-hidden group rounded-xl p-[1px]"
                             >
-                                <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-                                Abrir Art Studio
+                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-70 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                <div className="relative bg-cosmic-950 rounded-xl p-3 flex items-center justify-center gap-2 group-hover:bg-cosmic-900 transition-colors">
+                                    <Sparkles className="w-4 h-4 text-indigo-400 group-hover:text-white transition-colors" />
+                                    <span className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors">Abrir Art Studio</span>
+                                </div>
                             </button>
                             <p className="text-[10px] text-slate-500 text-center">
-                                Genera, sube y edita imágenes de fondo.
+                                Genera, sube y edita imágenes de fondo con IA.
                             </p>
                         </div>
 
                         {/* New: Design Controls when Image Active */}
                         {backgroundImage && (
-                            <div className="space-y-3 bg-cosmic-800/50 p-2 rounded-lg border border-glass-border mt-2">
-                                <div className="relative group w-full h-16 bg-cosmic-900 rounded-lg overflow-hidden border border-slate-600">
-                                    <img src={backgroundImage} className="w-full h-full object-cover opacity-70" alt="bg" />
-                                    <button
-                                        onClick={() => setBackgroundImage(undefined)}
-                                        className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-all font-xs font-bold uppercase tracking-wider"
-                                    >
-                                        <Eraser className="w-4 h-4 mr-1" /> Quitar Fondo
-                                    </button>
+                            <div className="space-y-4 bg-cosmic-900/50 p-4 rounded-xl border border-white/10 mt-2 backdrop-blur-sm">
+                                <div className="relative group w-full h-24 bg-cosmic-950 rounded-lg overflow-hidden border border-white/10 shadow-inner">
+                                    <img src={backgroundImage} className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform duration-700" alt="bg" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                                        <button
+                                            onClick={() => setBackgroundImage(undefined)}
+                                            className="bg-red-500/80 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 backdrop-blur-sm transition-all transform hover:scale-105"
+                                        >
+                                            <Eraser className="w-3 h-3" /> Quitar
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[10px] text-slate-400">
-                                        <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Opacidad Grilla</span>
-                                        <span>{Math.round(overlayOpacity * 100)}%</span>
+                                <div className="space-y-3">
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                            <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Opacidad Grilla</span>
+                                            <span className="text-indigo-400">{Math.round(overlayOpacity * 100)}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0" max="1" step="0.05"
+                                            value={overlayOpacity}
+                                            onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+                                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 block hover:bg-slate-700 transition-colors"
+                                        />
                                     </div>
-                                    <input
-                                        type="range"
-                                        min="0" max="1" step="0.05"
-                                        value={overlayOpacity}
-                                        onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
-                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                                    />
-                                </div>
 
-                                <div className="space-y-1 border-t border-glass-border pt-2">
-                                    <div className="flex justify-between text-[10px] text-slate-400">
-                                        <span className="flex items-center gap-1"><Type className="w-3 h-3" /> Opacidad Textos</span>
-                                        <span>{Math.round(textOverlayOpacity * 100)}%</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="0" max="1" step="0.05"
-                                        value={textOverlayOpacity}
-                                        onChange={(e) => setTextOverlayOpacity(parseFloat(e.target.value))}
-                                        className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                                    />
-                                    <div className="flex justify-between text-[8px] text-slate-500 px-0.5">
-                                        <span>Transparente</span>
-                                        <span>Sólido</span>
+                                    <div className="space-y-1 pt-2 border-t border-white/5">
+                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                            <span className="flex items-center gap-1"><Type className="w-3 h-3" /> Opacidad Textos</span>
+                                            <span className="text-indigo-400">{Math.round(textOverlayOpacity * 100)}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0" max="1" step="0.05"
+                                            value={textOverlayOpacity}
+                                            onChange={(e) => setTextOverlayOpacity(parseFloat(e.target.value))}
+                                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 block hover:bg-slate-700 transition-colors"
+                                        />
                                     </div>
                                 </div>
                             </div>
                         )}
 
 
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Tipografía</label>
-                            <div className="grid grid-cols-4 gap-1">
+                        <div className="space-y-2 pt-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipografía</label>
+                            <div className="grid grid-cols-4 gap-1.5">
                                 {(['CLASSIC', 'MODERN', 'FUN', 'SCHOOL'] as FontType[]).map(ft => (
                                     <button
                                         key={ft}
                                         onClick={() => setFontType(ft)}
-                                        className={`text-[9px] py-1 rounded border ${fontType === ft ? 'bg-accent-600 border-indigo-500 text-white' : 'bg-cosmic-800 border-glass-border text-slate-400'}`}
+                                        className={`text-[9px] py-2 rounded-lg border transition-all duration-200 ${fontType === ft
+                                            ? 'bg-accent-600 border-accent-500 text-white shadow-md shadow-accent-500/20 font-bold'
+                                            : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5 hover:text-white'}`}
                                     >
                                         {ft === 'CLASSIC' ? 'Mono' : ft === 'MODERN' ? 'Sans' : ft === 'FUN' ? 'Fun' : 'Sch'}
                                     </button>
@@ -1558,46 +1589,46 @@ export default function App() {
 
                     {/* Grid Visual Settings (Moved) */}
                     <section className="space-y-4">
-                        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-800 pb-1">
-                            <Grid3X3 className="w-3 h-3" /> Ajustes Grilla
+                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
+                            <Grid3X3 className="w-4 h-4 text-emerald-400" /> Ajustes Grilla
                         </h2>
                         {/* Grid Font Size Scale */}
-                        <div className="mt-2">
-                            <div className="flex justify-between text-[9px] text-slate-500 mb-1">
+                        <div className="mt-2 space-y-2">
+                            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                                 <span>Tamaño Letra</span>
-                                <span>{Math.round(gridFontSizeScale * 100)}%</span>
+                                <span className="text-emerald-400">{Math.round(gridFontSizeScale * 100)}%</span>
                             </div>
                             <input
                                 type="range"
                                 min="0.5" max="2.0" step="0.1"
                                 value={gridFontSizeScale}
                                 onChange={(e) => setGridFontSizeScale(parseFloat(e.target.value))}
-                                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
+                                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 block hover:bg-slate-700 transition-colors"
                             />
                         </div>
 
                         {/* Border Toggle */}
-                        <div className="flex items-center justify-between bg-cosmic-800 p-2 rounded-lg">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Mostrar Bordes</label>
+                        <div className="flex items-center justify-between bg-cosmic-900/50 p-3 rounded-xl border border-white/5 hover:border-white/10 transition-colors group">
+                            <label className="text-xs font-bold text-slate-300 uppercase group-hover:text-white transition-colors">Mostrar Bordes</label>
                             <button
                                 onClick={() => setShowBorders(!showBorders)}
-                                className={`w-11 h-6 rounded-full transition-all relative shadow-inner ${showBorders ? 'bg-gradient-to-r from-indigo-500 to-purple-500' : 'bg-slate-700'}`}
+                                className={`w-12 h-7 rounded-full transition-all relative shadow-inner ${showBorders ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-slate-800'}`}
                             >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md left-1 ${showBorders ? 'translate-x-5' : 'translate-x-0'}`} />
+                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-md left-1 ${showBorders ? 'translate-x-5' : 'translate-x-0'}`} />
                             </button>
                         </div>
                     </section>
                 </div>
 
                 {/* Footer Actions (Moved) */}
-                <div className="p-4 bg-[#11111b] border-t border-glass-border/50 flex flex-col gap-2 shadow-lg z-20">
+                <div className="p-6 bg-cosmic-950/90 border-t border-white/10 flex flex-col gap-3 shadow-2xl z-20 backdrop-blur-xl">
                     <button
                         onClick={() => handleGeneratePuzzle()}
-                        className="btn-primary cta-breathing w-full flex items-center justify-center gap-2 active:scale-[0.98]"
+                        className="btn-primary cta-breathing w-full flex items-center justify-center gap-2 active:scale-[0.98] py-3 text-sm font-bold shadow-lg shadow-indigo-500/20"
                     >
                         <RefreshCw className="w-5 h-5" /> Regenerar Sopa
                     </button>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-3">
                         <button onClick={() => setShowLibraryModal(true)} className="py-2 bg-cosmic-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center justify-center gap-2 text-xs font-medium border border-glass-border transition-colors">
                             <FolderOpen className="w-4 h-4" /> Biblioteca
                         </button>
