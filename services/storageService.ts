@@ -138,6 +138,28 @@ export const getArtLibrary = async (): Promise<ArtTemplate[]> => {
     return await db.art.toArray();
 };
 
+// --- Custom Style Templates Management ---
+
+import { CustomTemplate } from '../types';
+
+export const saveCustomTemplate = async (template: CustomTemplate): Promise<CustomTemplate> => {
+    await db.customTemplates.put(template);
+    return template;
+};
+
+export const getCustomTemplates = async (): Promise<CustomTemplate[]> => {
+    return await db.customTemplates.orderBy('createdAt').reverse().toArray();
+};
+
+export const deleteCustomTemplate = async (id: string) => {
+    await db.customTemplates.delete(id);
+};
+
+export const updateCustomTemplate = async (id: string, updates: Partial<CustomTemplate>) => {
+    await db.customTemplates.update(id, updates);
+};
+
+
 // --- User Preferences (Feedback Loop) ---
 
 export const saveUserPreference = async (type: 'like' | 'dislike', prompt: string, styleDesc?: string, artTemplateId?: string) => {

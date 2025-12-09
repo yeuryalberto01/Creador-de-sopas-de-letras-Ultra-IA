@@ -13,11 +13,14 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
 
     const {
         title, headerLeft, headerRight, footerText, pageNumber,
-        words, showSolution, styleMode, themeData,
+        words, showSolution, styleMode, themeData: configThemeData,
         backgroundImage, backgroundStyle,
         margins, overlayOpacity, textOverlayOpacity,
         designTheme, showBorders = true
     } = config;
+
+    // Use themeData from config, fallback to puzzle.theme for color consistency
+    const themeData = configThemeData || puzzle.theme;
 
     // Defaults if margins not provided
     const marginTop = margins?.top ?? 0.5;
@@ -49,11 +52,13 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 pageStyle: {},
                 contentStyle: {
                     ...baseContentStyle,
-                    border: showBorders ? '3px double black' : 'none',
-                    borderRadius: '4px' // Slight rounding for classic, not too much
+                    borderWidth: showBorders ? '3px' : '0px',
+                    borderStyle: showBorders ? 'double' : 'none',
+                    borderColor: 'black',
+                    borderRadius: '4px'
                 },
                 headerTitle: { fontFamily: '"Times New Roman", serif', textTransform: 'uppercase' as const, letterSpacing: '0.2em', borderBottom: showBorders ? '1px solid black' : 'none', paddingBottom: '0.2rem' },
-                gridBorder: { border: showBorders ? '2px solid black' : 'none', borderRadius: '0px' },
+                gridBorder: { borderWidth: showBorders ? '2px' : '0px', borderStyle: 'solid', borderColor: 'black', borderRadius: '0px' },
                 wordListTitle: { fontFamily: '"Times New Roman", serif', fontStyle: 'italic', borderBottom: 'none' }
             };
         }
@@ -63,12 +68,14 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                     pageStyle: { backgroundColor: undefined },
                     contentStyle: {
                         ...baseContentStyle,
-                        border: showBorders ? '6px solid #FFB347' : 'none',
-                        borderRadius: '24px', // Extra round for kids
+                        borderWidth: showBorders ? '6px' : '0px',
+                        borderStyle: 'solid',
+                        borderColor: '#FFB347',
+                        borderRadius: '24px',
                         backgroundColor: 'rgba(255,255,255,0.4)'
                     },
                     headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: '#FF4500', textShadow: '2px 2px 0px #FFD700', letterSpacing: '0.05em' },
-                    gridBorder: { border: showBorders ? '4px dashed #77DD77' : 'none', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.8)' },
+                    gridBorder: { borderWidth: showBorders ? '4px' : '0px', borderStyle: 'dashed', borderColor: '#77DD77', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.8)' },
                     wordListTitle: { fontFamily: '"Comic Sans MS", cursive', backgroundColor: '#FF6961', color: 'white', borderRadius: '10px', padding: '0.2rem 0.8rem' }
                 };
             } else {
@@ -76,11 +83,13 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                     pageStyle: {},
                     contentStyle: {
                         ...baseContentStyle,
-                        border: showBorders ? '6px solid black' : 'none',
+                        borderWidth: showBorders ? '6px' : '0px',
+                        borderStyle: 'solid',
+                        borderColor: 'black',
                         borderRadius: '24px'
                     },
                     headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: 'black', letterSpacing: '0.05em' },
-                    gridBorder: { border: showBorders ? '4px dashed black' : 'none', borderRadius: '16px' },
+                    gridBorder: { borderWidth: showBorders ? '4px' : '0px', borderStyle: 'dashed', borderColor: 'black', borderRadius: '16px' },
                     wordListTitle: { fontFamily: '"Comic Sans MS", cursive', border: '2px solid black', borderRadius: '10px', padding: '0.2rem 0.8rem' }
                 };
             }
@@ -90,10 +99,12 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 pageStyle: {},
                 contentStyle: {
                     ...baseContentStyle,
-                    border: showBorders ? (isColor ? '2px solid #6366f1' : '2px solid black') : 'none',
+                    borderWidth: showBorders ? '2px' : '0px',
+                    borderStyle: 'solid',
+                    borderColor: isColor ? '#6366f1' : 'black',
                 },
                 headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '800', letterSpacing: '-0.02em' },
-                gridBorder: { border: showBorders ? '1px solid rgba(0,0,0,0.1)' : 'none', borderRadius: '8px' },
+                gridBorder: { borderWidth: showBorders ? '1px' : '0px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.1)', borderRadius: '8px' },
                 wordListTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '600' }
             };
         }
@@ -102,17 +113,19 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 pageStyle: {},
                 contentStyle: {
                     ...baseContentStyle,
-                    border: showBorders ? '1px solid #94a3b8' : 'none',
+                    borderWidth: showBorders ? '1px' : '0px',
+                    borderStyle: 'solid',
+                    borderColor: '#94a3b8',
                     borderRadius: '12px'
                 },
                 headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '300', letterSpacing: '0.1em' },
-                gridBorder: { border: 'none' },
+                gridBorder: { borderWidth: '0px', borderStyle: 'none' },
                 wordListTitle: { fontFamily: 'Inter, sans-serif', textTransform: 'uppercase', fontSize: '0.8em', letterSpacing: '0.1em' }
             };
         }
         return {
             pageStyle: {},
-            contentStyle: { ...baseContentStyle, border: showBorders ? '1px solid black' : 'none' },
+            contentStyle: { ...baseContentStyle, borderWidth: showBorders ? '1px' : '0px', borderStyle: 'solid', borderColor: 'black' },
             headerTitle: {},
             gridBorder: {},
             wordListTitle: {}
@@ -189,11 +202,15 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
         height: `${gridDimensions.height}px`,
         margin: '0 auto', // Center in wrapper
         backgroundColor: getGridBackgroundColor(),
-        borderColor: isPrintPreview ? 'black' : (isColor ? themeData.primaryColor : 'black'),
+        // borderColor: REMOVED to avoid conflict. Handled below.
         backdropFilter: backgroundImage && finalGridOpacity > 0.05 && finalGridOpacity < 0.95 ? 'blur(2px)' : 'none',
         borderRadius: config.maskShape === 'CIRCLE' ? '50%' : (config.maskShape === 'SQUARE' ? '4px' : '0'),
         boxShadow: backgroundImage && config.maskShape === 'SQUARE' && finalGridOpacity > 0.4 ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
+        // Apply theme border styles first
         ...themeStyles.gridBorder,
+        // Then override color if needed (logic: prioritizes theme color if set in themeStyles, else falls back to dynamic)
+        // Check if themeStyles.gridBorder has a specific color, if not, use the dynamic one.
+        ...(themeStyles.gridBorder.borderColor ? {} : { borderColor: isPrintPreview ? 'black' : (isColor ? themeData.primaryColor : 'black') }),
         ...(config.maskShape === 'CIRCLE' ? { borderRadius: '50%' } : {})
     };
 
@@ -269,13 +286,13 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
             >
                 {/* Header (Natural Height) */}
                 <div className="w-full flex-shrink-0" style={getTextCardStyle(true)}>
-                    <div className={`w-full ${!hasBackground && designTheme !== 'classic' ? 'border-b-2 pb-2' : ''}`} style={{ borderColor: headerTextColor, color: headerTextColor }}>
+                    <div className={`w-full ${!hasBackground && designTheme !== 'classic' ? 'border-b-2 pb-2' : ''}`} style={{ borderColor: headerTextColor, color: headerTextColor }} data-puzzle-object="header_container">
                         <DraggableElement id="title" isEditMode={isEditMode} isSelected={selectedElement === 'title'} onSelect={onSelectElement} onDrag={onDrag}>
-                            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-1" style={{ fontFamily: config.fontType === 'FUN' ? fontFamily : 'Inter', ...themeStyles.headerTitle }}>
+                            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-1" style={{ fontFamily: config.fontType === 'FUN' ? fontFamily : 'Inter', ...themeStyles.headerTitle }} data-puzzle-object="title_text">
                                 {title || "Sopa de Letras"}
                             </h1>
                         </DraggableElement>
-                        <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }}>
+                        <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }} data-puzzle-object="header_meta">
                             <DraggableElement id="headerLeft" isEditMode={isEditMode} isSelected={selectedElement === 'headerLeft'} onSelect={onSelectElement} onDrag={onDrag}>
                                 <span className="min-w-[100px]">{headerLeft}</span>
                             </DraggableElement>
@@ -300,6 +317,7 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                         onDrag={onDrag}
                         className={`transition-all duration-300 ${showBorders && config.maskShape === 'SQUARE' && designTheme !== 'classic' ? 'border-2' : ''}`}
                         style={gridContainerStyle}
+                        data-puzzle-object="grid_container"
                     >
                         {grid.map((row, y) => (
                             row.map((cell, x) => {
@@ -321,19 +339,21 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 {/* Word List (Natural Height) */}
                 <div className="w-full flex-shrink-0" style={getTextCardStyle(true)}>
                     <DraggableElement id="wordList" isEditMode={isEditMode} isSelected={selectedElement === 'wordList'} onSelect={onSelectElement} onDrag={onDrag}>
-                        <h3 className="text-lg font-bold mb-1 inline-block px-2 py-0.5 rounded-t-md border-b" style={{ color: isColor ? 'white' : 'black', backgroundColor: isColor ? themeData.primaryColor : 'transparent', borderColor: 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit', ...themeStyles.wordListTitle }}>
-                            Palabras a encontrar:
-                        </h3>
-                        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs sm:text-sm font-medium w-full px-2" style={{ color: isColor ? themeData.textColor : 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit' }}>
-                            {words.sort().map((word, idx) => {
-                                const isFound = placedWords.some(pw => pw.word === word);
-                                return (
-                                    <div key={idx} className={`flex items-center ${!isFound ? 'text-red-600 font-bold decoration-4 decoration-red-600' : ''}`} style={!isFound ? { textDecoration: 'line-through', textDecorationThickness: '2px' } : {}}>
-                                        <span className="w-2 h-2 border mr-1 inline-block shadow-sm flex-shrink-0" style={{ borderColor: isColor ? themeData.primaryColor : 'black', backgroundColor: isColor ? 'white' : 'transparent', boxShadow: isColor ? 'none' : '1px 1px 0 0 rgba(0,0,0,1)' }}></span>
-                                        <span className="truncate">{word}</span>
-                                    </div>
-                                );
-                            })}
+                        <div data-puzzle-object="word_list">
+                            <h3 className="text-lg font-bold mb-1 inline-block px-2 py-0.5 rounded-t-md border-b" style={{ color: isColor ? 'white' : 'black', backgroundColor: isColor ? themeData.primaryColor : 'transparent', borderColor: 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit', ...themeStyles.wordListTitle }}>
+                                Palabras a encontrar:
+                            </h3>
+                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs sm:text-sm font-medium w-full px-2" style={{ color: isColor ? themeData.textColor : 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit' }}>
+                                {words.sort().map((word, idx) => {
+                                    const isFound = placedWords.some(pw => pw.word === word);
+                                    return (
+                                        <div key={idx} className={`flex items-center ${!isFound ? 'text-red-600 font-bold decoration-4 decoration-red-600' : ''}`} style={!isFound ? { textDecoration: 'line-through', textDecorationThickness: '2px' } : {}}>
+                                            <span className="w-2 h-2 border mr-1 inline-block shadow-sm flex-shrink-0" style={{ borderColor: isColor ? themeData.primaryColor : 'black', backgroundColor: isColor ? 'white' : 'transparent', boxShadow: isColor ? 'none' : '1px 1px 0 0 rgba(0,0,0,1)' }}></span>
+                                            <span className="truncate">{word}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </DraggableElement>
                 </div>

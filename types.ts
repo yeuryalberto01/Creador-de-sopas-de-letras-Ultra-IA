@@ -41,6 +41,25 @@ export interface ArtTemplate {
   createdAt: number;
 }
 
+// Custom Template for saving style configurations
+export interface CustomTemplate {
+  id: string;
+  name: string;
+  createdAt: number;
+
+  // Style Configuration
+  designTheme: 'minimal' | 'classic' | 'kids' | 'modern';
+  showBorders: boolean;
+  themeData: PuzzleTheme;
+
+  // Layout Configuration
+  margins: PuzzleMargins;
+  fontType: FontType;
+
+  // Optional preview thumbnail (base64)
+  thumbnail?: string;
+}
+
 export interface PuzzleMargins {
   top: number;    // Inches
   bottom: number; // Inches
@@ -98,6 +117,21 @@ export interface PuzzleConfig {
   layout?: {
     [key: string]: ElementCoordinates; // Key is element ID (title, grid, wordList, etc.)
   };
+
+  // Art Studio / Detailed Style Overrides
+  fontFamilyHeader?: string;
+  fontFamilyGrid?: string;
+  headerStyle?: string;
+  wordListStyle?: string;
+  gridBorderColor?: string;
+  gridBackground?: string;
+  gridBorderWidth?: string;
+  gridRadius?: string;
+  textShadow?: string;
+  wordBoxVariant?: string;
+  headerBackdrop?: string;
+  textStrokeWidth?: string;
+  blendMode?: string;
 }
 
 export type AIProvider = 'gemini' | 'deepseek' | 'grok' | 'openai' | 'openai_compatible';

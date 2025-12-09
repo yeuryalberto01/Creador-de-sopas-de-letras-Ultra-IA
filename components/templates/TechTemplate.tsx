@@ -15,16 +15,19 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
 
     const {
         title, headerLeft, headerRight, footerText,
-        words, showSolution, themeData,
+        words, showSolution, themeData: configThemeData,
         backgroundImage, margins,
         overlayOpacity, textOverlayOpacity
     } = config;
 
+    // Use themeData from config, fallback to puzzle.theme for consistency
+    const effectiveTheme = configThemeData || puzzle.theme;
+
     // Tech Theme Colors (Default if no themeData)
-    const primaryColor = isPrintPreview ? '#000000' : (themeData?.primaryColor || '#1e3a8a');
-    const secondaryColor = isPrintPreview ? '#000000' : (themeData?.secondaryColor || '#1e293b');
+    const primaryColor = isPrintPreview ? '#000000' : (effectiveTheme?.primaryColor || '#1e3a8a');
+    const secondaryColor = isPrintPreview ? '#000000' : (effectiveTheme?.secondaryColor || '#1e293b');
     const accentColor = isPrintPreview ? '#999999' : '#3b82f6';
-    const textColor = isPrintPreview ? '#000000' : (themeData?.textColor || '#0f172a');
+    const textColor = isPrintPreview ? '#000000' : (effectiveTheme?.textColor || '#0f172a');
 
     // Margins
     const marginTop = margins?.top ?? 0.5;
@@ -134,7 +137,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                         style={{ borderColor: primaryColor, paddingBottom: '0.5rem', ...getLayoutStyle('title') }}
                     >
                         <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500">
+                            <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500" data-puzzle-object="header_meta">
                                 EDICIÓN PROGRAMADORES • NIVEL FÁCIL
                             </span>
                             <span className="text-[10px] font-mono text-slate-400">v1.0.4</span>
@@ -145,7 +148,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                                 <Laptop size={32} strokeWidth={1.5} />
                             </div>
                             <div className="flex-1">
-                                <h1 className="text-4xl font-black tracking-tight leading-none" style={{ color: secondaryColor }}>
+                                <h1 className="text-4xl font-black tracking-tight leading-none" style={{ color: secondaryColor }} data-puzzle-object="title_text">
                                     {title || "SOPAS DE LETRAS"}
                                 </h1>
                             </div>
@@ -192,6 +195,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                             height: `${gridDimensions.height}px`,
                             ...getLayoutStyle('grid')
                         }}
+                        data-puzzle-object="grid_container"
                     >
                         {grid.map((row, y) => (
                             row.map((cell, x) => {
@@ -231,11 +235,11 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                                 ...getLayoutStyle('wordList')
                             }}
                         >
-                            <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: secondaryColor }}>
+                            <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: secondaryColor }} data-puzzle-object="word_list_header">
                                 Palabras a encontrar
                             </h3>
 
-                            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                            <div className="grid grid-cols-2 gap-x-2 gap-y-1" data-puzzle-object="word_list_items">
                                 {words.map((word, idx) => (
                                     <div key={idx} className="flex items-center gap-2 text-sm font-semibold text-slate-600">
                                         <div className="w-4 h-4 border-2 rounded flex items-center justify-center" style={{ borderColor: secondaryColor }}></div>

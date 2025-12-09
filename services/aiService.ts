@@ -60,10 +60,9 @@ export const PROVIDER_PRESETS = {
 };
 
 export const GEMINI_MODELS = [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (New)' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Best Reasoning)' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast)' },
-    { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B' }
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fast & Smart)' },
+    { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro (Best Reasoning)' },
+    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Multimodal)' }
 ];
 
 export const DEEPSEEK_MODELS = [
@@ -432,7 +431,7 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
                 body: JSON.stringify({
                     prompt: prompt,
                     style: style,
-                    model: 'imagen-3.0-generate-001'
+                    model: 'gemini-2.5-flash-image'
                 })
             });
 
