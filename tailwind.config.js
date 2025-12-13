@@ -13,6 +13,11 @@ export default {
                 sans: ['Outfit', 'Inter', 'sans-serif'],
                 mono: ['Courier Prime', 'monospace'],
                 script: ['Architects Daughter', 'cursive'],
+                // Editorial Pack
+                editorial: ['Playfair Display', 'serif'],
+                'body-serif': ['Lora', 'serif'],
+                'modern-clean': ['Montserrat', 'sans-serif'],
+                'slab': ['Roboto Slab', 'serif'],
             },
             colors: {
                 cosmic: {

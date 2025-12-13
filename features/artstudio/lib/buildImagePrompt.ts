@@ -2,19 +2,19 @@
 import { ArtOptions, PuzzleInfo } from './types';
 
 export const buildImagePrompt = (puzzle: PuzzleInfo, options: ArtOptions): string => {
-  
+
   // INSTRUCCIONES DE ZONA SEGURA (MANDATO)
   const SAFE_ZONE_INSTRUCTIONS = `
     CRITICAL LAYOUT RULES (NON-NEGOTIABLE):
     1. CENTER AREA (The Puzzle Grid): MUST BE CLEAN. Use a very soft texture, plain paper, or solid light color. NO complex illustrations in the center.
     2. MARGINS: Place all heavy decorations (characters, trees, frames) in the OUTER MARGINS (Top, Bottom, Left, Right).
     3. CONTRAST: The background for the text area must ensure black text is 100% readable.
-    4. NO TEXT: Do not generate any text, letters, or numbers.
+    4. NO TEXT: Do not generate any text, letters, or numbers. The AI generates the ART, not the PUZZLE.
   `;
 
   // MODO REPARACIÓN (CRISIS)
   if (options.feedback && options.feedback.length > 2) {
-      return `
+    return `
       🚨 CORRECTION MODE - PRIORITY OVERRIDE
       
       PREVIOUS ERROR: User rejected the image because: "${options.feedback}".

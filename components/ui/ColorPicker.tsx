@@ -7,6 +7,37 @@ interface ColorPickerProps {
 }
 
 export const ColorPicker: React.FC<ColorPickerProps> = ({ label, value, onChange }) => {
+
+    // Helper to safely convert any format to Hex for the input
+    const getSafeHex = (colorVal: string): string => {
+        if (!colorVal) return "#000000";
+        if (colorVal.startsWith('#')) return colorVal;
+
+        if (colorVal.startsWith('hsl')) {
+            try {
+                // Parse HSL: hsl(345, 70%, 40%)
+                const matches = colorVal.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+                if (matches) {
+                    const h = parseInt(matches[1]);
+                    const s = parseInt(matches[2]);
+                    const l = parseInt(matches[3]);
+
+                    const lVal = l / 100;
+                    const a = s * Math.min(lVal, 1 - lVal) / 100;
+                    const f = (n: number) => {
+                        const k = (n + h / 30) % 12;
+                        const color = lVal - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * color).toString(16).padStart(2, '0');
+                    };
+                    return `#${f(0)}${f(8)}${f(4)}`;
+                }
+            } catch (e) {
+                console.warn("Error converting HSL to Hex", e);
+            }
+        }
+        return "#000000"; // Fallback
+    };
+
     return (
         <div className="flex flex-col gap-1">
             <label className="text-[9px] font-medium text-white/60 uppercase tracking-wide truncate">{label}</label>
@@ -14,7 +45,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ label, value, onChange
                 <div className="relative flex-shrink-0">
                     <input
                         type="color"
-                        value={value}
+                        value={getSafeHex(value)}
                         onChange={(e) => onChange(e.target.value)}
                         className="w-7 h-7 rounded cursor-pointer border border-white/20 hover:border-white/40 transition-colors appearance-none bg-transparent"
                         style={{ backgroundColor: value }}
@@ -29,12 +60,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ label, value, onChange
                     value={value.toUpperCase()}
                     onChange={(e) => {
                         const val = e.target.value;
-                        if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-                            onChange(val);
-                        }
+                        // Allow typing HSL or Hex
+                        onChange(val);
                     }}
                     className="w-full min-w-0 bg-white/5 border border-white/10 rounded px-1.5 py-1 text-[10px] text-white font-mono focus:border-indigo-500/50 focus:outline-none transition-all"
-                    placeholder="#FFF"
+                    placeholder="#FFF or hsl(...)"
                 />
             </div>
         </div>

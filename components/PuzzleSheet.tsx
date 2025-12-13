@@ -12,6 +12,7 @@ interface PuzzleSheetProps {
     onSelectElement?: (id: any) => void;
     isPrintPreview?: boolean;
     onDrag?: (id: string, x: number, y: number) => void;
+    onDoubleClick?: (id: string) => void;
 }
 
 const getFontFamily = (fontType: FontType) => {
@@ -24,7 +25,7 @@ const getFontFamily = (fontType: FontType) => {
     }
 };
 
-const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, selectedElement, onSelectElement, isPrintPreview, onDrag }) => {
+const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, selectedElement, onSelectElement, isPrintPreview, onDrag, onDoubleClick }) => {
     if (!puzzle || !puzzle.grid) {
         return (
             <div className="w-[8.5in] h-[11in] bg-white flex items-center justify-center flex-col text-gray-400 animate-pulse">
@@ -47,6 +48,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, s
             onSelectElement={onSelectElement}
             isPrintPreview={isPrintPreview}
             onDrag={onDrag}
+            onDoubleClick={onDoubleClick}
         />;
     }
 
@@ -60,6 +62,7 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, s
             onSelectElement={onSelectElement}
             isPrintPreview={isPrintPreview}
             onDrag={onDrag}
+            onDoubleClick={onDoubleClick}
         />;
     }
 
@@ -73,7 +76,8 @@ const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, s
         onSelectElement={onSelectElement}
         isPrintPreview={isPrintPreview}
         onDrag={onDrag}
+        onDoubleClick={onDoubleClick}
     />;
 };
 
-export default PuzzleSheet;
+export default React.memo(PuzzleSheet);

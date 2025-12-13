@@ -6,6 +6,7 @@ export enum Difficulty {
 
 export type ShapeType = 'SQUARE' | 'CIRCLE' | 'HEART' | 'DIAMOND' | 'STAR';
 export type FontType = 'CLASSIC' | 'MODERN' | 'FUN' | 'SCHOOL';
+export type FooterStyle = 'SIMPLE' | 'COMMERCIAL' | 'MODERN' | 'MINIMAL_QR' | 'TECH' | 'BARCODE' | 'ELEGANT';
 
 export interface GridCell {
   letter: string;
@@ -104,6 +105,12 @@ export interface PuzzleConfig {
   maskShape?: ShapeType;
   gridFontSizeScale?: number;
 
+  // Header & Footer Metadata
+  editorial?: string;
+  volume?: string;
+  footerStyle?: FooterStyle;
+  showQrCode?: boolean;
+
   // Background & Art
   backgroundImage?: string;
   backgroundStyle?: 'bw' | 'color';
@@ -118,9 +125,14 @@ export interface PuzzleConfig {
     [key: string]: ElementCoordinates; // Key is element ID (title, grid, wordList, etc.)
   };
 
-  // Art Studio / Detailed Style Overrides
-  fontFamilyHeader?: string;
-  fontFamilyGrid?: string;
+  // Art Studio / Detailed Style Overrides - Independent Typography per Element
+  fontFamilyHeader?: FontType;   // Typography for header/title
+  fontFamilyGrid?: FontType;     // Typography for grid letters
+  fontFamilyWordList?: FontType; // Typography for word list
+  // Bold toggles per element
+  boldHeader?: boolean;
+  boldGrid?: boolean;
+  boldWordList?: boolean;
   headerStyle?: string;
   wordListStyle?: string;
   gridBorderColor?: string;
@@ -132,6 +144,20 @@ export interface PuzzleConfig {
   headerBackdrop?: string;
   textStrokeWidth?: string;
   blendMode?: string;
+  marketingText?: string;
+  designAssets?: DesignAssetInstance[];
+}
+
+export interface DesignAssetInstance {
+  id: string;
+  assetId: string;
+  x: number;
+  y: number;
+  width: string;
+  height: string;
+  rotation?: number;
+  svgContent?: string;
+  isAdaptable?: boolean;
 }
 
 export type AIProvider = 'gemini' | 'deepseek' | 'grok' | 'openai' | 'openai_compatible';
@@ -158,6 +184,12 @@ export interface AppSettings {
   logicAI: AISettings; // Who generates the words?
   designAI: AISettings; // Who generates the colors/theme?
   tasteProfile?: string; // Consolidated user preferences (AI generated)
+
+  // Smart Persistence
+  footerPreferences?: {
+    editorial?: string;
+    footerStyle?: FooterStyle;
+  };
 }
 
 export interface SavedPuzzleRecord {

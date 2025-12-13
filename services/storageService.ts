@@ -1,4 +1,5 @@
 import { SavedPuzzleRecord, AppSettings, GeneratedPuzzle, PuzzleConfig, ArtTemplate, BookStack } from "../types";
+import { DesignAsset } from '../features/design_library/types';
 import { db, migrateFromLocalStorage } from "../db";
 
 // Initialize DB and migration
@@ -48,6 +49,18 @@ export const saveSettings = async (settings: AppSettings) => {
     }
 };
 
+export const saveFooterPreferences = async (editorial: string, footerStyle: any) => {
+    const current = await loadSettings();
+    const newSettings = {
+        ...current,
+        footerPreferences: {
+            editorial,
+            footerStyle
+        }
+    };
+    await saveSettings(newSettings);
+};
+
 // --- Puzzle Database Management (Single Puzzles) ---
 
 export const savePuzzleToLibrary = async (name: string, config: PuzzleConfig, puzzleData: GeneratedPuzzle): Promise<SavedPuzzleRecord> => {
@@ -94,13 +107,29 @@ export const createBookStack = async (name: string, targetCount: number): Promis
 export const addPuzzleToStack = async (stackId: string, puzzleRecord: SavedPuzzleRecord) => {
     const stack = await db.stacks.get(stackId);
     if (stack) {
-        const pageNum = stack.puzzles.length + 1;
+        // Smart Auto-Numbering
+        // Determine the next page number based on the last puzzle in the stack
+        let nextPageNum = stack.puzzles.length + 1;
+
+        // Attempt to parse the last page number if it exists
+        if (stack.puzzles.length > 0) {
+            const lastPuzzle = stack.puzzles[stack.puzzles.length - 1];
+            if (lastPuzzle.config.pageNumber) {
+                const lastNum = parseInt(lastPuzzle.config.pageNumber);
+                if (!isNaN(lastNum)) {
+                    nextPageNum = lastNum + 1;
+                }
+            }
+        }
+
         const recordWithPage = {
             ...puzzleRecord,
             id: crypto.randomUUID(),
             config: {
                 ...puzzleRecord.config,
-                pageNumber: pageNum.toString()
+                // Only override if the user hasn't manually set a specific weird page number? 
+                // Actually, for a stack add, auto-numbering is usually desired.
+                pageNumber: nextPageNum.toString()
             }
         };
         stack.puzzles.push(recordWithPage);
@@ -234,4 +263,18 @@ export const getMLProfile = async (): Promise<MLUserProfile> => {
         console.error("Error loading ML profile", e);
         return createInitialUserProfile();
     }
+};
+
+// --- Design Asset Management ---
+
+export const saveDesignAsset = async (asset: DesignAsset) => {
+    await db.designAssets.put(asset);
+};
+
+export const getDesignAssets = async (): Promise<DesignAsset[]> => {
+    return await db.designAssets.toArray();
+};
+
+export const deleteDesignAsset = async (id: string) => {
+    await db.designAssets.delete(id);
 };

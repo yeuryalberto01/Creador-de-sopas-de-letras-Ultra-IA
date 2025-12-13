@@ -1,12 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import pako from 'pako';
 import { PuzzleTemplateProps } from './types';
+import { useGridAutoSize } from '../../hooks/useGridAutoSize';
 import { DraggableElement } from '../editor/DraggableElement';
+import { RenderedAsset } from '../../features/design_library/components/RenderedAsset';
+
+// --- DESIGN 2.0: PROFESSIONAL EDITOR ---
+// This component has been refactored to treat Header, Grid, and WordList as distinct
+// "Objects" that can be interacted with (via hover detection) and styling is upgraded
+// to use 'Playfair Display' and 'Lora' for a magazine/editorial look.
 
 export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
     puzzle, config, fontFamily,
     isEditMode = false, selectedElement = null, onSelectElement = () => { },
     isPrintPreview = false,
-    onDrag
+    onDrag,
+    onDoubleClick
 }) => {
     const { grid } = puzzle;
     const placedWords = puzzle.placedWords || puzzle.words || [];
@@ -16,7 +26,8 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
         words, showSolution, styleMode, themeData: configThemeData,
         backgroundImage, backgroundStyle,
         margins, overlayOpacity, textOverlayOpacity,
-        designTheme, showBorders = true
+        designTheme, showBorders = true,
+        designAssets = [] // Defaults to empty array
     } = config;
 
     // Use themeData from config, fallback to puzzle.theme for color consistency
@@ -38,210 +49,135 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
 
     const isColor = styleMode === 'color' && themeData;
 
-    // --- THEME LOGIC ---
+    // --- THEME UTILS ---
+    const getFontFamily = (type: string | undefined): string => {
+        switch (type) {
+            case 'CLASSIC': return '"Courier New", Courier, monospace';
+            case 'MODERN': return 'Montserrat, "Inter", sans-serif';
+            case 'FUN': return '"Comic Sans MS", "Chalkboard SE", cursive';
+            case 'SCHOOL': return '"Times New Roman", Times, serif';
+            case 'EDITORIAL': return '"Playfair Display", serif';
+            default: return 'Montserrat, "Inter", sans-serif';
+        }
+    };
+
+    // Independent typography per Smart Object
+    const headerFont = getFontFamily(config.fontFamilyHeader || 'MODERN');
+    const gridFont = getFontFamily(config.fontFamilyGrid || 'CLASSIC');
+    const wordListFont = getFontFamily(config.fontFamilyWordList || 'MODERN');
+
+    // Legacy fallback
+    const effectiveFontFamily = getFontFamily(config.fontType || 'EDITORIAL');
+
+    // --- OBJECT STYLES ---
+
+    // 1. Hover Detection Helper
+    const getSelectionStyle = (elementId: string): React.CSSProperties => {
+        if (!isEditMode) return {};
+        const isSelected = selectedElement === elementId;
+        const hoverColor = isSelected ? '#3b82f6' : 'rgba(59, 130, 246, 0.4)'; // Blue 500
+
+        // Return a transparent border that lights up on hover/select
+        return isEditMode ? {
+            cursor: 'pointer',
+            outline: isSelected ? `2px solid ${hoverColor}` : '1px dashed transparent',
+            outlineOffset: '4px',
+            transition: 'outline 0.15s ease'
+        } : {};
+    };
+
+    // 2. Visual Theme Map
+    // Bold weights per element
+    const headerWeight = config.boldHeader !== false ? '700' : '400'; // Default bold
+    const gridWeight = config.boldGrid ? '700' : '400'; // Default normal
+    const wordListWeight = config.boldWordList ? '700' : '400'; // Default normal
+
     const getThemeStyles = () => {
-        // Base content style for consistency (The "Modern" Logic)
         const baseContentStyle = {
-            padding: '0.5in',
-            borderRadius: '16px', // Unified rounded corners for a cleaner look, even for classic
+            padding: '2rem',
             transition: 'all 0.3s ease'
         };
 
-        if (designTheme === 'classic') {
-            return {
-                pageStyle: {},
-                contentStyle: {
-                    ...baseContentStyle,
-                    borderWidth: showBorders ? '3px' : '0px',
-                    borderStyle: showBorders ? 'double' : 'none',
-                    borderColor: 'black',
-                    borderRadius: '4px'
-                },
-                headerTitle: { fontFamily: '"Times New Roman", serif', textTransform: 'uppercase' as const, letterSpacing: '0.2em', borderBottom: showBorders ? '1px solid black' : 'none', paddingBottom: '0.2rem' },
-                gridBorder: { borderWidth: showBorders ? '2px' : '0px', borderStyle: 'solid', borderColor: 'black', borderRadius: '0px' },
-                wordListTitle: { fontFamily: '"Times New Roman", serif', fontStyle: 'italic', borderBottom: 'none' }
-            };
-        }
-        if (designTheme === 'kids') {
-            if (isColor) {
-                return {
-                    pageStyle: { backgroundColor: undefined },
-                    contentStyle: {
-                        ...baseContentStyle,
-                        borderWidth: showBorders ? '6px' : '0px',
-                        borderStyle: 'solid',
-                        borderColor: '#FFB347',
-                        borderRadius: '24px',
-                        backgroundColor: 'rgba(255,255,255,0.4)'
-                    },
-                    headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: '#FF4500', textShadow: '2px 2px 0px #FFD700', letterSpacing: '0.05em' },
-                    gridBorder: { borderWidth: showBorders ? '4px' : '0px', borderStyle: 'dashed', borderColor: '#77DD77', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.8)' },
-                    wordListTitle: { fontFamily: '"Comic Sans MS", cursive', backgroundColor: '#FF6961', color: 'white', borderRadius: '10px', padding: '0.2rem 0.8rem' }
-                };
-            } else {
-                return {
-                    pageStyle: {},
-                    contentStyle: {
-                        ...baseContentStyle,
-                        borderWidth: showBorders ? '6px' : '0px',
-                        borderStyle: 'solid',
-                        borderColor: 'black',
-                        borderRadius: '24px'
-                    },
-                    headerTitle: { fontFamily: '"Comic Sans MS", cursive', color: 'black', letterSpacing: '0.05em' },
-                    gridBorder: { borderWidth: showBorders ? '4px' : '0px', borderStyle: 'dashed', borderColor: 'black', borderRadius: '16px' },
-                    wordListTitle: { fontFamily: '"Comic Sans MS", cursive', border: '2px solid black', borderRadius: '10px', padding: '0.2rem 0.8rem' }
-                };
-            }
-        }
         if (designTheme === 'modern') {
             return {
-                pageStyle: {},
-                contentStyle: {
-                    ...baseContentStyle,
-                    borderWidth: showBorders ? '2px' : '0px',
-                    borderStyle: 'solid',
-                    borderColor: isColor ? '#6366f1' : 'black',
-                },
-                headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '800', letterSpacing: '-0.02em' },
-                gridBorder: { borderWidth: showBorders ? '1px' : '0px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.1)', borderRadius: '8px' },
-                wordListTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '600' }
+                containerClass: '',
+                titleStyle: { fontFamily: headerFont, fontWeight: headerWeight, textTransform: 'uppercase' as const, letterSpacing: '-0.02em', fontSize: '3rem' },
+                metaBarStyle: { fontFamily: headerFont, fontWeight: headerWeight === '700' ? '500' : '400', textTransform: 'uppercase' as const, letterSpacing: '0.1em', fontSize: '0.75rem', color: '#64748b' },
+                gridStyle: { borderRadius: '12px', fontFamily: gridFont, fontWeight: gridWeight },
+                wordListStyle: { fontFamily: wordListFont, fontWeight: wordListWeight }
             };
         }
-        if (designTheme === 'minimal') {
-            return {
-                pageStyle: {},
-                contentStyle: {
-                    ...baseContentStyle,
-                    borderWidth: showBorders ? '1px' : '0px',
-                    borderStyle: 'solid',
-                    borderColor: '#94a3b8',
-                    borderRadius: '12px'
-                },
-                headerTitle: { fontFamily: 'Inter, sans-serif', fontWeight: '300', letterSpacing: '0.1em' },
-                gridBorder: { borderWidth: '0px', borderStyle: 'none' },
-                wordListTitle: { fontFamily: 'Inter, sans-serif', textTransform: 'uppercase', fontSize: '0.8em', letterSpacing: '0.1em' }
-            };
-        }
+
+        // DEFAULT: EDITORIAL (The Standard)
         return {
-            pageStyle: {},
-            contentStyle: { ...baseContentStyle, borderWidth: showBorders ? '1px' : '0px', borderStyle: 'solid', borderColor: 'black' },
-            headerTitle: {},
-            gridBorder: {},
-            wordListTitle: {}
+            containerClass: '',
+            contentStyle: { // Restored for compatibility
+                padding: '2rem',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column' as const
+            },
+            titleStyle: { fontFamily: headerFont, fontWeight: headerWeight, fontSize: '3.5rem', lineHeight: '1', color: '#1e293b' },
+            metaBarStyle: { fontFamily: headerFont, fontWeight: headerWeight === '700' ? '500' : '400', fontStyle: 'italic', fontSize: '0.9rem', color: '#475569', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '0.5rem 0', margin: '0.5rem 0 1.5rem 0' },
+            gridStyle: { borderRadius: '2px', fontFamily: gridFont, fontWeight: gridWeight }, // Sharp corners for print
+            wordListStyle: { fontFamily: wordListFont, fontWeight: wordListWeight }
         };
     };
 
     const themeStyles = getThemeStyles();
 
-    const pageBackgroundStyle = isPrintPreview
-        ? { backgroundColor: 'white' }
-        : (isColor
-            ? { backgroundColor: themeData.backgroundColor }
-            : { backgroundColor: backgroundImage ? 'transparent' : (themeStyles.pageStyle.backgroundColor || 'white') });
+    // SAFETY CHECK: Ensure contentStyle exists for the spread below
+    const activeContentStyle = 'contentStyle' in themeStyles ? themeStyles.contentStyle : {};
 
-    const headerTextColor = isPrintPreview ? 'black' : (isColor ? themeData.primaryColor : 'black');
 
-    // --- AUTO-ADJUST LOGIC (ResizeObserver) ---
+    // --- GRID CALCULATION ---
     const gridWrapperRef = useRef<HTMLDivElement>(null);
-    const [gridDimensions, setGridDimensions] = useState({ width: 0, height: 0 });
+    const { gridDimensions } = useGridAutoSize(
+        gridWrapperRef,
+        gridCols,
+        gridRows,
+        54 // Increased MAX cell size for better visibility
+    );
 
-    useEffect(() => {
-        if (!gridWrapperRef.current) return;
-
-        const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-
-                // 1. Calculate the maximum possible cell size that fits in the container
-                const maxPossibleCellWidth = width / gridCols;
-                const maxPossibleCellHeight = height / gridRows;
-                const maxFitCellSize = Math.min(maxPossibleCellWidth, maxPossibleCellHeight);
-
-                // 2. Define a Maximum Allowed Cell Size (e.g., ~45px or 0.45 inches)
-                // This prevents 10x10 grids from having huge letters.
-                // 1 inch = 96px. 0.5 inch = 48px.
-                const MAX_ALLOWED_CELL_SIZE = 48;
-
-                // 3. Determine actual cell size
-                const actualCellSize = Math.min(maxFitCellSize, MAX_ALLOWED_CELL_SIZE);
-
-                // 4. Calculate final grid dimensions
-                const finalWidth = actualCellSize * gridCols;
-                const finalHeight = actualCellSize * gridRows;
-
-                // Safety check to avoid 0/NaN
-                if (finalWidth > 0 && finalHeight > 0) {
-                    setGridDimensions({ width: finalWidth, height: finalHeight });
-                }
-            }
-        });
-
-        observer.observe(gridWrapperRef.current);
-        return () => observer.disconnect();
-    }, [gridCols, gridRows]);
-
-    // Font Size Calculation based on measured dimensions
-    // Convert pixels to inches approximation for consistency if needed, but here we work in pixels for display
-    // 1 inch = 96px usually in browser
-    const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.6;
+    // Font Size Logic
+    const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.65; // Slightly larger text
     const fontSizePx = baseFontSizePx * (config.gridFontSizeScale || 1.0);
 
-    const getGridBackgroundColor = () => {
-        if (isPrintPreview) return 'transparent';
-        if (!isColor) return 'transparent';
-        if (backgroundImage) return `rgba(255, 255, 255, ${0.85 * finalGridOpacity})`;
-        return 'transparent';
+
+    // --- RENDER HELPERS ---
+
+    // Word List: Switch to Columns instead of Pills
+    const renderWordList = () => {
+        // Use columns for professional look
+        // Math Check: 3 cols typically fits 15-20 words in ~2 inches of height.
+        return (
+            <div className="w-full grid grid-cols-3 gap-x-4 gap-y-2 mt-4" style={{ fontFamily: themeStyles.wordListStyle.fontFamily, fontWeight: wordListWeight }}>
+                {words.sort().map((word, idx) => {
+                    return (
+                        <div key={idx} className="flex items-center space-x-2">
+                            {/* Checkbox Circle - Empty for player use */}
+                            <div
+                                className="w-4 h-4 rounded-full border border-gray-400 flex-shrink-0 flex items-center justify-center bg-transparent"
+                            >
+                            </div>
+                            {/* Word Text - Clear and legible */}
+                            <span
+                                className="text-sm tracking-wide text-gray-800"
+                                style={{
+                                    fontFamily: themeStyles.wordListStyle.fontFamily,
+                                    fontWeight: wordListWeight,
+                                    fontSize: '0.9rem'
+                                }}
+                            >
+                                {word}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+        );
     };
 
-    const gridContainerStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-        gridTemplateRows: `repeat(${gridRows}, 1fr)`,
-        width: `${gridDimensions.width}px`,
-        height: `${gridDimensions.height}px`,
-        margin: '0 auto', // Center in wrapper
-        backgroundColor: getGridBackgroundColor(),
-        // borderColor: REMOVED to avoid conflict. Handled below.
-        backdropFilter: backgroundImage && finalGridOpacity > 0.05 && finalGridOpacity < 0.95 ? 'blur(2px)' : 'none',
-        borderRadius: config.maskShape === 'CIRCLE' ? '50%' : (config.maskShape === 'SQUARE' ? '4px' : '0'),
-        boxShadow: backgroundImage && config.maskShape === 'SQUARE' && finalGridOpacity > 0.4 ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none',
-        // Apply theme border styles first
-        ...themeStyles.gridBorder,
-        // Then override color if needed (logic: prioritizes theme color if set in themeStyles, else falls back to dynamic)
-        // Check if themeStyles.gridBorder has a specific color, if not, use the dynamic one.
-        ...(themeStyles.gridBorder.borderColor ? {} : { borderColor: isPrintPreview ? 'black' : (isColor ? themeData.primaryColor : 'black') }),
-        ...(config.maskShape === 'CIRCLE' ? { borderRadius: '50%' } : {})
-    };
-
-    const cellStyle = (isWord: boolean, isValid: boolean): React.CSSProperties => ({
-        color: isPrintPreview ? 'black' : (isColor ? themeData.textColor : 'black'),
-        backgroundColor: showSolution && isWord
-            ? (isColor ? themeData.primaryColor : '#d1d5db')
-            : 'transparent',
-        fontWeight: '900',
-        textShadow: backgroundImage ? '0px 0px 3px rgba(255, 255, 255, 0.9), 0px 0px 1px white' : 'none',
-        zIndex: 1,
-        fontSize: `${fontSizePx}px`,
-        lineHeight: 1 // Tight line height
-    });
-
-    const getTextCardStyle = (addMarginBottom: boolean = true): React.CSSProperties => {
-        if (isPrintPreview) return { backgroundColor: 'transparent', border: 'none', boxShadow: 'none', marginBottom: addMarginBottom ? '0.5rem' : '0' };
-        if (!hasBackground && designTheme !== 'modern') return { marginBottom: addMarginBottom ? '0.5rem' : '0' };
-        if (hasBackground) return { backgroundColor: 'transparent', border: 'none', boxShadow: 'none', marginBottom: addMarginBottom ? '0.5rem' : '0', padding: '0.5rem' };
-        return {
-            backgroundColor: `rgba(255, 255, 255, ${Math.max(finalTextOpacity, 0.92)})`,
-            backdropFilter: 'blur(8px)',
-            borderRadius: '0.75rem',
-            padding: '0.75rem',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
-            border: '1px solid rgba(255, 255, 255, 0.8)',
-            marginBottom: addMarginBottom ? '1rem' : '0'
-        };
-    };
-
-    const hasBackground = !!backgroundImage;
 
     return (
         <div
@@ -253,121 +189,204 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 paddingLeft: `${marginLeft}in`,
                 paddingRight: `${marginRight}in`,
                 backgroundColor: 'white',
-                ...pageBackgroundStyle,
                 position: 'relative',
                 display: 'flex',
                 flexDirection: 'column'
             }}
+            className="shadow-2xl mx-auto overflow-hidden bg-white text-slate-900 selection:bg-blue-100"
+            id="puzzle-page-container"
         >
-            {/* Background Layer */}
+            {/* Background Image / Color Layer */}
             {backgroundImage && !isPrintPreview && (
                 <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
                     <img
                         src={backgroundImage}
-                        alt="Puzzle Background"
+                        alt="Background"
                         className="w-full h-full object-cover"
                         style={{
-                            filter: config.backgroundFilters
-                                ? `brightness(${config.backgroundFilters.brightness}%) contrast(${config.backgroundFilters.contrast}%) grayscale(${config.backgroundFilters.grayscale}%) blur(${config.backgroundFilters.blur}px) sepia(${config.backgroundFilters.sepia}%)`
-                                : (backgroundStyle === 'bw' ? 'grayscale(100%) contrast(125%)' : 'none')
+                            opacity: 1, // Controlled by filtering mostly
+                            filter: backgroundStyle === 'bw' ? 'grayscale(100%) opacity(0.3)' : `opacity(${1 - (config.backgroundFilters?.contrast || 0) / 200})`
                         }}
                     />
+                    <div className="absolute inset-0 bg-white" style={{ opacity: isPrintPreview ? 0 : 0.4 }} />
                 </div>
             )}
 
-            {isColor && !backgroundImage && (
-                <div className="absolute top-0 left-0 w-full h-4 opacity-50 z-0" style={{ backgroundColor: themeData.primaryColor }} />
-            )}
+            {/* Design Assets Layer */}
+            {designAssets.map(asset => (
+                <RenderedAsset
+                    key={asset.id}
+                    instance={asset}
+                    isEditMode={isEditMode}
+                    isSelected={selectedElement === asset.id}
+                    onSelect={onSelectElement}
+                    onDrag={onDrag}
+                    themeData={isColor ? themeData : undefined}
+                />
+            ))}
 
-            {/* Main Content Container - Flexbox */}
+
+            {/* --- MAIN LAYOUT (Flex Column) --- */}
+            {/* Added pb-8 to ensure visual gap between bottom of list and footer margin */}
             <div
-                className="relative z-10 w-full h-full flex flex-col"
-                style={{ ...themeStyles.contentStyle }}
+                className="relative z-10 w-full h-full flex flex-col justify-start pb-8"
+                style={{ ...activeContentStyle }}
             >
-                {/* Header (Natural Height) */}
-                <div className="w-full flex-shrink-0" style={getTextCardStyle(true)}>
-                    <div className={`w-full ${!hasBackground && designTheme !== 'classic' ? 'border-b-2 pb-2' : ''}`} style={{ borderColor: headerTextColor, color: headerTextColor }} data-puzzle-object="header_container">
-                        <DraggableElement id="title" isEditMode={isEditMode} isSelected={selectedElement === 'title'} onSelect={onSelectElement} onDrag={onDrag}>
-                            <h1 className="text-4xl font-bold text-center uppercase tracking-wider mb-1" style={{ fontFamily: config.fontType === 'FUN' ? fontFamily : 'Inter', ...themeStyles.headerTitle }} data-puzzle-object="title_text">
-                                {title || "Sopa de Letras"}
-                            </h1>
-                        </DraggableElement>
-                        <div className="flex justify-between mt-1 text-sm font-mono-puzzle w-full px-2" style={{ color: isColor ? themeData.textColor : 'black' }} data-puzzle-object="header_meta">
-                            <DraggableElement id="headerLeft" isEditMode={isEditMode} isSelected={selectedElement === 'headerLeft'} onSelect={onSelectElement} onDrag={onDrag}>
-                                <span className="min-w-[100px]">{headerLeft}</span>
-                            </DraggableElement>
-                            <DraggableElement id="headerRight" isEditMode={isEditMode} isSelected={selectedElement === 'headerRight'} onSelect={onSelectElement} onDrag={onDrag}>
-                                <span className="min-w-[100px] text-right">{headerRight}</span>
-                            </DraggableElement>
+
+                {/* 1. HEADER OBJECT */}
+                <DraggableElement
+                    id="header"
+                    isEditMode={isEditMode}
+                    isSelected={selectedElement === 'header'}
+                    onSelect={onSelectElement}
+                    onDrag={onDrag}
+                    onDoubleClick={() => onDoubleClick?.('header')}
+                    className="mb-6"
+                >
+                    <div
+                        className={`w-full flex-shrink-0 text-center px-4 py-2 hover:bg-blue-50/10 transition-colors rounded-lg`}
+                        style={getSelectionStyle('header')}
+                        data-puzzle-object="header"
+                        data-measure-id="puzzle-title"
+                    >
+                        {/* Title */}
+                        <h1
+                            className="leading-tight mb-2 tracking-tight"
+                            style={themeStyles.titleStyle}
+                        >
+                            {title || "SOPA DE LETRAS"}
+                        </h1>
+
+                        {/* Meta Bar */}
+                        <div
+                            className="flex justify-between items-center w-full max-w-2xl mx-auto"
+                            style={themeStyles.metaBarStyle}
+                        >
+                            <span className="uppercase">{headerLeft || "Dificultad: Media"}</span>
+                            {headerRight && (
+                                <>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300 mx-2"></span>
+                                    <span className="uppercase">{headerRight}</span>
+                                </>
+                            )}
                         </div>
                     </div>
-                </div>
+                </DraggableElement>
 
-                {/* Grid Wrapper (Fills remaining space) */}
+
+                {/* 2. GRID OBJECT (Flexible Height) */}
                 <div
+                    className="flex-grow flex items-center justify-center w-full relative min-h-0 my-2"
                     ref={gridWrapperRef}
-                    className="flex-grow flex items-center justify-center w-full relative min-h-0 overflow-hidden my-2"
                 >
-                    {/* The Grid itself */}
                     <DraggableElement
                         id="grid"
                         isEditMode={isEditMode}
                         isSelected={selectedElement === 'grid'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
-                        className={`transition-all duration-300 ${showBorders && config.maskShape === 'SQUARE' && designTheme !== 'classic' ? 'border-2' : ''}`}
-                        style={gridContainerStyle}
-                        data-puzzle-object="grid_container"
+                        onDoubleClick={() => onDoubleClick?.('grid')}
+                        className="relative"
                     >
-                        {grid.map((row, y) => (
-                            row.map((cell, x) => {
-                                const isSolutionCell = showSolution && cell.isWord;
-                                return (
-                                    <div
-                                        key={`${x}-${y}`}
-                                        className={`flex items-center justify-center font-bold ${showSolution && !cell.isWord ? 'opacity-30' : ''}`}
-                                        style={cellStyle(isSolutionCell, cell.isValid)}
-                                    >
-                                        {cell.isValid ? cell.letter : ''}
-                                    </div>
-                                );
-                            })
-                        ))}
-                    </DraggableElement>
-                </div>
+                        {/* Grid Container */}
+                        <div
+                            className="grid transition-all duration-300 relative group"
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+                                width: `${gridDimensions.width}px`,
+                                height: `${gridDimensions.height}px`,
+                                backgroundColor: isPrintPreview ? 'transparent' : (backgroundImage ? `rgba(255,255,255,${overlayOpacity})` : 'transparent'),
+                                backdropFilter: backgroundImage ? 'blur(4px)' : 'none',
+                                borderRadius: '4px',
+                                boxShadow: (!isPrintPreview && backgroundImage) ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : 'none',
+                                ...getSelectionStyle('grid')
+                            }}
+                            data-puzzle-object="grid"
+                            data-measure-id="puzzle-grid-container"
+                        >
+                            {/* Double Border Frame for "Pro" look (Optional based on theme, hardcoded here for editorial feel) */}
+                            {!isPrintPreview && showBorders && (
+                                <div className="absolute -inset-3 border-4 border-slate-900/5 rounded-xl pointer-events-none" />
+                            )}
 
-                {/* Word List (Natural Height) */}
-                <div className="w-full flex-shrink-0" style={getTextCardStyle(true)}>
-                    <DraggableElement id="wordList" isEditMode={isEditMode} isSelected={selectedElement === 'wordList'} onSelect={onSelectElement} onDrag={onDrag}>
-                        <div data-puzzle-object="word_list">
-                            <h3 className="text-lg font-bold mb-1 inline-block px-2 py-0.5 rounded-t-md border-b" style={{ color: isColor ? 'white' : 'black', backgroundColor: isColor ? themeData.primaryColor : 'transparent', borderColor: 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit', ...themeStyles.wordListTitle }}>
-                                Palabras a encontrar:
-                            </h3>
-                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs sm:text-sm font-medium w-full px-2" style={{ color: isColor ? themeData.textColor : 'black', fontFamily: config.fontType === 'FUN' ? fontFamily : 'inherit' }}>
-                                {words.sort().map((word, idx) => {
-                                    const isFound = placedWords.some(pw => pw.word === word);
+                            {grid.map((row, y) => (
+                                row.map((cell, x) => {
+                                    const isSolutionCell = showSolution && cell.isWord;
                                     return (
-                                        <div key={idx} className={`flex items-center ${!isFound ? 'text-red-600 font-bold decoration-4 decoration-red-600' : ''}`} style={!isFound ? { textDecoration: 'line-through', textDecorationThickness: '2px' } : {}}>
-                                            <span className="w-2 h-2 border mr-1 inline-block shadow-sm flex-shrink-0" style={{ borderColor: isColor ? themeData.primaryColor : 'black', backgroundColor: isColor ? 'white' : 'transparent', boxShadow: isColor ? 'none' : '1px 1px 0 0 rgba(0,0,0,1)' }}></span>
-                                            <span className="truncate">{word}</span>
+                                        <div
+                                            key={`${x}-${y}`}
+                                            className="flex items-center justify-center select-none"
+                                            style={{
+                                                fontSize: `${fontSizePx}px`,
+                                                fontFamily: gridFont,
+                                                fontWeight: gridWeight,
+                                                color: isSolutionCell ? (isColor ? themeData.primaryColor : '#0f172a') : '#334155',
+                                                backgroundColor: isSolutionCell ? (isColor ? `${themeData.primaryColor}20` : '#e2e8f0') : 'transparent',
+                                                borderRadius: isSolutionCell ? '4px' : '0'
+                                            }}
+                                        >
+                                            {cell.isValid ? cell.letter : ''}
                                         </div>
                                     );
-                                })}
-                            </div>
+                                })
+                            ))}
                         </div>
                     </DraggableElement>
                 </div>
 
-                {/* Footer (Natural Height) */}
-                <div className="w-full flex-shrink-0" style={getTextCardStyle(false)}>
-                    <div className={`w-full flex justify-between items-end text-gray-500 ${!hasBackground ? 'border-t pt-1' : ''} relative`}>
-                        <div className="flex flex-col">
-                            <span className="text-[9px] font-medium uppercase tracking-wide">{footerText !== undefined ? footerText : "Generado con SopaCreator AI"}</span>
-                            <span className="font-mono text-[8px] opacity-60">ID: {puzzle.seed}</span>
-                        </div>
-                        {pageNumber && <div className="text-lg font-bold font-mono text-black absolute right-0 bottom-1">{pageNumber}</div>}
+
+                {/* 3. WORD LIST OBJECT */}
+                <DraggableElement
+                    id="wordList"
+                    isEditMode={isEditMode}
+                    isSelected={selectedElement === 'wordList'}
+                    onSelect={onSelectElement}
+                    onDrag={onDrag}
+                    onDoubleClick={() => onDoubleClick?.('wordList')}
+                    className="mt-6"
+                >
+                    <div
+                        className="w-full flex-shrink-0 px-8 py-4 bg-slate-50 border-t-2 border-slate-100"
+                        style={{
+                            ...getSelectionStyle('wordList')
+                        }}
+                        data-puzzle-object="wordList"
+                        data-measure-id="puzzle-wordlist"
+                    >
+                        <h3
+                            className="text-center text-sm uppercase tracking-widest text-slate-500 mb-4"
+                            style={{ fontFamily: themeStyles.wordListStyle.fontFamily, fontWeight: wordListWeight }}
+                        >
+                            — Palabras a Encontrar ({words.length}) —
+                        </h3>
+                        {renderWordList()}
+                    </div>
+                </DraggableElement>
+
+                {/* 4. FOOTER (Bottom Absolute) */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: `${marginLeft}in`,
+                        right: `${marginRight}in`,
+                        height: `${marginBottom}in`,
+                        paddingTop: '0.5rem',
+                        display: 'flex',
+                        justifyContent: 'center'
+                    }}
+                    data-puzzle-object="footer"
+                    data-measure-id="puzzle-footer"
+                >
+                    <div className="w-full border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 font-mono pt-2">
+                        <span>{config.editorial || "EDITORIAL PROPIA"}</span>
+                        <span>VOL. {config.volume || "1"}</span>
+                        <span>PAG. {pageNumber || "1"}</span>
                     </div>
                 </div>
+
             </div>
         </div>
     );

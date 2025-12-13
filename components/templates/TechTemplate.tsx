@@ -3,12 +3,15 @@ import { PuzzleTemplateProps } from './types';
 import { Laptop, Lightbulb, CheckSquare, Star, QrCode, Code2, Database, Cpu, Wifi } from 'lucide-react';
 
 import { DraggableElement } from '../editor/DraggableElement';
+import { useGridAutoSize } from '../../hooks/useGridAutoSize';
+import { getElementLayout } from './utils';
 
 export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
     puzzle, config, fontFamily,
     isEditMode = false, selectedElement = null, onSelectElement = () => { },
     isPrintPreview = false,
-    onDrag
+    onDrag,
+    onDoubleClick
 }) => {
     const { grid } = puzzle;
     const placedWords = puzzle.placedWords || puzzle.words || [];
@@ -45,59 +48,22 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
     const gridRows = grid.length;
     const gridCols = grid[0]?.length || 10;
 
-    // --- AUTO-ADJUST LOGIC (ResizeObserver) ---
+
+    // --- AUTO-ADJUST LOGIC (useGridAutoSize) ---
     const gridWrapperRef = useRef<HTMLDivElement>(null);
-    const [gridDimensions, setGridDimensions] = useState({ width: 0, height: 0 });
-
-    useEffect(() => {
-        if (!gridWrapperRef.current) return;
-
-        const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-
-                // 1. Calculate the maximum possible cell size that fits in the container
-                const maxPossibleCellWidth = width / gridCols;
-                const maxPossibleCellHeight = height / gridRows;
-                const maxFitCellSize = Math.min(maxPossibleCellWidth, maxPossibleCellHeight);
-
-                // 2. Define a Maximum Allowed Cell Size (e.g., ~45px or 0.45 inches)
-                const MAX_ALLOWED_CELL_SIZE = 48;
-
-                // 3. Determine actual cell size
-                const actualCellSize = Math.min(maxFitCellSize, MAX_ALLOWED_CELL_SIZE);
-
-                // 4. Calculate final grid dimensions
-                const finalWidth = actualCellSize * gridCols;
-                const finalHeight = actualCellSize * gridRows;
-
-                if (finalWidth > 0 && finalHeight > 0) {
-                    setGridDimensions({ width: finalWidth, height: finalHeight });
-                }
-            }
-        });
-
-        observer.observe(gridWrapperRef.current);
-        return () => observer.disconnect();
-    }, [gridCols, gridRows]);
+    const { gridDimensions } = useGridAutoSize(
+        gridWrapperRef,
+        gridCols,
+        gridRows,
+        48 // MAX_ALLOWED_CELL_SIZE
+    );
 
     const cellSize = gridDimensions.width / gridCols; // Approximate for display
     const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.6;
     const fontSizePx = baseFontSizePx * (config.gridFontSizeScale || 1.0);
 
-    const getLayoutStyle = (id: string): React.CSSProperties => {
-        if (config.isFreeLayout && config.layout?.[id]) {
-            return {
-                position: 'absolute',
-                left: `${config.layout[id].x}px`,
-                top: `${config.layout[id].y}px`,
-                zIndex: 20,
-                width: 'auto',
-                maxWidth: '100%'
-            };
-        }
-        return {};
-    };
+    // Layout helper
+    const getLayoutStyle = (id: string) => getElementLayout(config, id);
 
     return (
         <div
@@ -115,6 +81,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                 display: 'flex',
                 flexDirection: 'column'
             }}
+            id="puzzle-page-container"
         >
             {/* Background Image */}
             {backgroundImage && !isPrintPreview && (
@@ -128,19 +95,21 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                 {/* --- HEADER (Natural Height) --- */}
                 <div className="w-full flex-shrink-0">
                     <DraggableElement
-                        id="title"
+                        id="header"
                         isEditMode={isEditMode}
-                        isSelected={selectedElement === 'title'}
+                        isSelected={selectedElement === 'header'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
+                        onDoubleClick={() => onDoubleClick?.('header')}
                         className="flex flex-col mb-2 border-b-4"
-                        style={{ borderColor: primaryColor, paddingBottom: '0.5rem', ...getLayoutStyle('title') }}
+                        style={{ borderColor: primaryColor, paddingBottom: '0.5rem', ...getLayoutStyle('header') }}
+                        data-measure-id="puzzle-title"
                     >
                         <div className="flex justify-between items-center mb-2">
                             <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500" data-puzzle-object="header_meta">
-                                EDICIÓN PROGRAMADORES • NIVEL FÁCIL
+                                {headerLeft || "EDICIÓN DIGITAL"}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-400">v1.0.4</span>
+                            <span className="text-[10px] font-mono text-slate-400">{headerRight || "v1.0"}</span>
                         </div>
 
                         <div className="flex items-center gap-4">
@@ -185,17 +154,19 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                         isSelected={selectedElement === 'grid'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
+                        onDoubleClick={() => onDoubleClick?.('grid')}
                         className="rounded-3xl p-4 shadow-inner backdrop-blur-sm transition-colors"
                         style={{
                             display: 'grid',
                             gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-                            gap: '1px',
-                            backgroundColor: isPrintPreview ? 'white' : `rgba(241, 245, 249, ${overlayOpacity ?? 0.9})`,
+                            // gap: '1px', <-- Removed gap for cleaner look
+                            backgroundColor: isPrintPreview ? 'white' : `rgba(241, 245, 249, ${overlayOpacity ?? 0.5})`, // Lighter opacity
                             width: `${gridDimensions.width}px`,
                             height: `${gridDimensions.height}px`,
                             ...getLayoutStyle('grid')
                         }}
                         data-puzzle-object="grid_container"
+                        data-measure-id="puzzle-grid-container"
                     >
                         {grid.map((row, y) => (
                             row.map((cell, x) => {
@@ -207,8 +178,9 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                                         style={{
                                             fontSize: `${fontSizePx}px`,
                                             color: isSolutionCell ? 'white' : undefined,
-                                            backgroundColor: isSolutionCell ? accentColor : 'transparent',
-                                            borderRadius: isSolutionCell ? '4px' : '0'
+                                            backgroundColor: isSolutionCell ? accentColor : (isPrintPreview ? 'transparent' : 'rgba(255,255,255,0.4)'), // Subtle cell bg
+                                            borderRadius: '6px', // Rounded cells
+                                            margin: '1px' // Tiny margin for separation instead of gap
                                         }}
                                     >
                                         {cell.isValid ? cell.letter : ''}
@@ -228,12 +200,14 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                             isSelected={selectedElement === 'wordList'}
                             onSelect={onSelectElement}
                             onDrag={onDrag}
+                            onDoubleClick={() => onDoubleClick?.('wordList')}
                             className="flex-1 border-2 rounded-2xl p-4 relative backdrop-blur-sm transition-colors"
                             style={{
                                 borderColor: secondaryColor,
                                 backgroundColor: `rgba(255, 255, 255, ${textOverlayOpacity ?? 0.8})`,
                                 ...getLayoutStyle('wordList')
                             }}
+                            data-measure-id="puzzle-wordlist"
                         >
                             <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: secondaryColor }} data-puzzle-object="word_list_header">
                                 Palabras a encontrar
@@ -262,7 +236,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                             </div>
                             <div className="text-center">
                                 <p className="text-[10px] font-bold text-slate-600 leading-tight">
-                                    Entrena tu mente,<br />aprende tecnología
+                                    {config.marketingText || "Entrena tu mente,\nexpande tus límites"}
                                 </p>
                             </div>
                         </div>
@@ -270,7 +244,7 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
 
                     {/* Bottom Branding */}
                     <div className="text-center text-[10px] text-slate-400 mt-2 font-mono">
-                        Puzzle creado por PUZZLEBRAND • www.tuweb.com
+                        {footerText || "Puzzle generado con IA"}
                     </div>
                 </div>
 

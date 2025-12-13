@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { SavedPuzzleRecord, BookStack, AppSettings, ArtTemplate, UserPreference, CustomTemplate } from './types';
+import { DesignAsset } from './features/design_library/types';
 
 export class SopaDatabase extends Dexie {
     puzzles!: Table<SavedPuzzleRecord, string>;
@@ -8,6 +9,7 @@ export class SopaDatabase extends Dexie {
     art!: Table<ArtTemplate, string>;
     preferences!: Table<UserPreference, string>;
     customTemplates!: Table<CustomTemplate, string>;
+    designAssets!: Table<DesignAsset, string>;
 
     constructor() {
         super('SopaCreatorDB');
@@ -27,6 +29,11 @@ export class SopaDatabase extends Dexie {
         // Version 3: Add custom templates
         this.version(3).stores({
             customTemplates: 'id, name, createdAt'
+        });
+
+        // Version 4: Design Assets
+        this.version(4).stores({
+            designAssets: 'id, category'
         });
     }
 }

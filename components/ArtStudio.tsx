@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { PuzzleInfo, ArtOptions, LayoutConfig, DesignPlan } from '../features/artstudio/lib/types';
 import { useArtStudioTransform } from '../features/artstudio/hooks/useArtStudioTransform';
+import { PuzzleStructure } from '../features/artstudio/lib/spatialUtils'; // Import this
 import PuzzleSheet from './PuzzleSheet';
 import { GeneratedPuzzle, PuzzleConfig } from '../types';
 import {
@@ -21,6 +22,7 @@ export interface ArtStudioProps {
     onClose?: () => void;
     onSave?: (backgroundImage?: string) => void;
     gridSnapshot?: string | null;
+    spatialMetrics?: PuzzleStructure | null; // Add this prop
 }
 
 const QUICK_THEMES = [
@@ -90,7 +92,7 @@ const TabButton: React.FC<TabButtonProps> = ({ id, icon: Icon, label, active, on
     </Tooltip>
 );
 
-export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, onSave, gridSnapshot }) => {
+export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, onSave, gridSnapshot, spatialMetrics }) => {
     const [options, setOptions] = useState<ArtOptions>({
         visualStyle: 'editorial_pro',
         styleIntensity: 'medium',
@@ -243,8 +245,14 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
 
     const handleSmartGenerate = async () => {
         try {
+            // 1. Capture Layout Metrics from DOM
+            const { measurePuzzleElements } = await import('../features/artstudio/lib/spatialUtils');
+            const metrics = measurePuzzleElements();
+
+            console.log("📐 [ART STUDIO] Spatial Analysis:", metrics);
+
             const intent = options.userPrompt?.trim() === '' ? "Diseño profesional" : (options.userPrompt || '');
-            // Crear PuzzleInfo desde GeneratedPuzzle + PuzzleConfig para compatibilidad
+
             const puzzleInfo: PuzzleInfo = {
                 title: config.title || 'Sopa de Letras',
                 levelText: config.difficulty || 'Intermedio',
@@ -253,8 +261,9 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                 headerLeft: config.headerLeft || '',
                 headerRight: config.headerRight || ''
             };
-            // Pasar configuración actual para respetar bloqueos
-            await executeSmartGeneration(puzzleInfo, intent, options, undefined, finalLayoutConfig);
+
+            // Pass the CAPTURED metrics, not the prop (which might be stale)
+            await executeSmartGeneration(puzzleInfo, intent, options, undefined, finalLayoutConfig, metrics);
         } catch (e) { console.error(e); }
     };
 
@@ -295,7 +304,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
             // Restore user zoom
             captureRef.current.style.transform = originalTransform;
 
-            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const imgData = canvas.toDataURL('image/png', 1.0);
             const pdf = new jsPDF({ orientation: 'portrait', unit: 'in', format: 'letter' });
             pdf.addImage(imgData, 'JPEG', 0, 0, 8.5, 11);
             pdf.save(`Matatiempo_${config.title || 'Puzzle'}_${Date.now()}.pdf`);
@@ -696,11 +705,11 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-white/50 uppercase">Estilo Visual</label>
-                                            <select className="w-full bg-white/5 border border-white/10 rounded text-xs text-white p-2" value={overrideConfig.footerStyle || 'simple'} onChange={(e) => setOverrideConfig({ ...overrideConfig, footerStyle: e.target.value as any })}>
-                                                <option value="simple">Simple</option>
-                                                <option value="tech">Tech Terminal</option>
-                                                <option value="barcode">Etiqueta</option>
-                                                <option value="elegant">Elegante</option>
+                                            <select className="w-full bg-white/5 border border-white/10 rounded text-xs text-white p-2" value={overrideConfig.footerStyle || 'SIMPLE'} onChange={(e) => setOverrideConfig({ ...overrideConfig, footerStyle: e.target.value as any })}>
+                                                <option value="SIMPLE">Simple</option>
+                                                <option value="TECH">Tech Terminal</option>
+                                                <option value="BARCODE">Etiqueta</option>
+                                                <option value="ELEGANT">Elegante</option>
                                             </select>
                                         </div>
                                         <div className="space-y-2">
@@ -789,8 +798,12 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                     </div>
 
                     <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center', transition: isDragging ? 'none' : 'transform 0.1s ease-out' }} className="relative shadow-2xl">
-                        <div ref={captureRef} className="relative w-[816px] h-[1056px] bg-white shadow-[0_0_100px_rgba(0,0,0,0.5)] origin-center">
-                            {currentVersion && <img src={currentVersion.imageUrl} className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />}
+                        <div
+                            ref={captureRef}
+                            id="puzzle-page-container"
+                            className="relative w-[816px] h-[1056px] bg-white shadow-[0_0_100px_rgba(0,0,0,0.5)] origin-center"
+                        >
+                            {currentVersion?.imageUrl && <img src={currentVersion.imageUrl} className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />}
                             <div className="relative z-10 w-full h-full transition-opacity duration-300" style={{ opacity: dataOpacity / 100 }}>
                                 {gridSnapshot ? (
                                     <img src={gridSnapshot} className="w-full h-full object-contain pointer-events-none" alt="Snapshot" />

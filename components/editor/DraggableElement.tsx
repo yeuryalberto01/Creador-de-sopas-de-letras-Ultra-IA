@@ -2,15 +2,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { EditorElementId } from './types';
 
-interface DraggableElementProps {
+interface DraggableElementProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onDrag' | 'onSelect' | 'onDoubleClick'> {
     id: EditorElementId;
     isSelected: boolean;
     onSelect: (id: EditorElementId) => void;
     children: React.ReactNode;
-    className?: string;
-    style?: React.CSSProperties;
     isEditMode: boolean;
     onDrag?: (id: EditorElementId, x: number, y: number) => void;
+    onDoubleClick?: () => void;
 }
 
 export const DraggableElement: React.FC<DraggableElementProps> = ({
@@ -21,7 +20,9 @@ export const DraggableElement: React.FC<DraggableElementProps> = ({
     className = '',
     style = {},
     isEditMode,
-    onDrag
+    onDrag,
+    onDoubleClick,
+    ...props
 }) => {
     const elementRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -101,26 +102,57 @@ export const DraggableElement: React.FC<DraggableElementProps> = ({
             id={id}
             ref={elementRef}
             onMouseDown={handleMouseDown}
-            className={`relative transition-all duration-200 ${className} ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 cursor-move' : 'hover:ring-1 hover:ring-indigo-300 cursor-pointer'}`}
+            onDoubleClick={(e) => {
+                if (isEditMode && onDoubleClick) {
+                    e.stopPropagation();
+                    onDoubleClick();
+                }
+            }}
+            className={`group relative transition-all duration-200 ${className} 
+                ${isSelected
+                    ? 'ring-2 ring-indigo-500 ring-offset-2 cursor-move z-50'
+                    : 'hover:outline-2 hover:outline-dashed hover:outline-indigo-400 hover:bg-indigo-50/10 cursor-pointer z-10'
+                }
+            `}
             style={{
                 ...style,
-                zIndex: isSelected ? 50 : 10,
-                cursor: isDragging ? 'grabbing' : (isSelected ? 'grab' : 'pointer')
+                zIndex: isSelected ? 50 : (isDragging ? 40 : 10),
+                cursor: isDragging ? 'grabbing' : (isSelected ? 'grab' : 'pointer'),
+                transform: isDragging ? 'scale(1.02)' : 'scale(1)',
+                boxShadow: isDragging ? '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' : undefined
             }}
+            {...props}
         >
             {children}
 
-            {/* Selection Indicators */}
+            {/* Smart Label - Visible on Hover or Selection */}
+            {(isSelected || isEditMode) && (
+                <div className={`absolute -top-6 left-1/2 transform -translate-x-1/2 
+                    bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded shadow-sm 
+                    font-mono uppercase tracking-wider whitespace-nowrap transition-opacity duration-200 pointer-events-none
+                    ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                `}>
+                    {id}
+                </div>
+            )}
+
+            {/* Selection Indicators (Corners) - Visible only on Selection */}
             {isSelected && (
                 <>
-                    <div className="absolute -top-2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm" />
-                    <div className="absolute -top-2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm" />
-                    <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm" />
-                    <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm" />
+                    <div className="absolute -top-2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-125" />
+                    <div className="absolute -top-2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-125" />
+                    <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-125" />
+                    <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-125" />
+                </>
+            )}
 
-                    <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded shadow-sm font-mono uppercase tracking-wider whitespace-nowrap">
-                        {id}
-                    </div>
+            {/* Hover Hint Corners (Subtle corners that appear on hover if not selected) */}
+            {!isSelected && isEditMode && (
+                <>
+                    <div className="absolute -top-1 -left-1 w-2 h-2 border-t-2 border-l-2 border-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute -top-1 -right-1 w-2 h-2 border-t-2 border-r-2 border-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute -bottom-1 -left-1 w-2 h-2 border-b-2 border-l-2 border-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="absolute -bottom-1 -right-1 w-2 h-2 border-b-2 border-r-2 border-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </>
             )}
         </div>

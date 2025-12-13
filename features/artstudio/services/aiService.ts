@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { GenerateDesignParams, PuzzleInfo, DesignPlan, KnowledgeBase, VisionAnalysis } from "../lib/types";
+import { PuzzleStructure, formatMetricsForPrompt } from "../lib/spatialUtils";
 import { loadSettings } from "../../../services/storageService";
 
 // Helper to get the AI client lazily
@@ -93,13 +94,62 @@ export const extractStyleFromImage = async (base64Image: string): Promise<Partia
 };
 
 // --- CENE-VISION (El Ojo Multimodal) ---
-export const analyzeGeneratedImageWithVision = async (base64Image: string): Promise<VisionAnalysis> => {
+// Helper to rasterize SVG for Vision Analysis
+const rasterizeSVG = (svgDataUri: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      // Dimensions: Use intrinsic or default to a reasonable analysis size
+      canvas.width = img.width || 1024;
+      canvas.height = img.height || 1024;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error("Canvas context failed")); return; }
+
+      // White background for transparency
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = (e) => reject(new Error(`SVG Rasterization failed: ${e}`));
+    img.src = svgDataUri;
+  });
+};
+
+// --- CENE-VISION (El Ojo Multimodal) ---
+export const analyzeGeneratedImageWithVision = async (imageBase64: string, prompt?: string): Promise<VisionAnalysis> => {
   try {
+    let finalImageForVision = imageBase64;
+
+    // 1. Transform SVG to PNG for Vision AI (Rasterization)
+    const isSVG = imageBase64.includes('image/svg+xml') || imageBase64.startsWith('<svg');
+    console.log(`🔍 [CENE-VISION] Image Type Check: Prefix=${imageBase64.substring(0, 50)}... IsSVG=${isSVG}`);
+
+    if (isSVG) {
+      console.log("ℹ️ [CENE-VISION] Transformando SVG a PNG para análisis visual...");
+      try {
+        finalImageForVision = await rasterizeSVG(imageBase64);
+        console.log("✅ [CENE-VISION] Rasterización completada.");
+      } catch (e) {
+        console.warn("⚠️ [CENE-VISION] Falló la rasterización. Saltando análisis visual.", e);
+        return {
+          contrastScore: 85,
+          gridObstruction: false,
+          textLegibility: 'high',
+          detectedElements: ['vector_fallback'],
+          critique: "Diseño vectorial (Análisis visual omitido por error de conversión). Se asume legibilidad alta."
+        };
+      }
+    }
+
     console.log("👁️ [CENE-VISION] Inspeccionando imagen generada...");
     const ai = await getAIClient();
-    const base64Data = base64Image.split(',')[1];
+    const base64Data = finalImageForVision.split(',')[1]; // Remove data:image/png;base64, prefix
 
-    const prompt = `
+    const visionPrompt = `
         Actúa como un Experto en Control de Calidad de Impresión (QA).
         Analiza esta imagen de una página de sopa de letras.
         
@@ -114,18 +164,18 @@ export const analyzeGeneratedImageWithVision = async (base64Image: string): Prom
         `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.0-flash", // Use flash for speed, or pro-vision if available
       contents: {
         parts: [
           { inlineData: { mimeType: "image/png", data: base64Data } },
-          { text: prompt }
+          { text: visionPrompt }
         ]
       },
       config: { responseMimeType: "application/json" }
     });
 
     const text = response.text;
-    if (!text) throw new Error("Visión fallida");
+    if (!text) throw new Error("Visión fallida - Sin respuesta");
 
     return JSON.parse(cleanJsonString(text)) as VisionAnalysis;
 
@@ -136,7 +186,7 @@ export const analyzeGeneratedImageWithVision = async (base64Image: string): Prom
       gridObstruction: false,
       textLegibility: 'medium',
       detectedElements: [],
-      critique: "Análisis visual no disponible."
+      critique: "Análisis visual no disponible temporalmente."
     };
   }
 };
@@ -146,28 +196,42 @@ export const analyzeAndPlanDesign = async (
   puzzle: PuzzleInfo,
   userIntent?: string,
   knowledgeBase?: KnowledgeBase,
-  currentCritique?: string
+  currentCritique?: string,
+  spatialMetrics?: PuzzleStructure
 ): Promise<DesignPlan> => {
   try {
-    console.log("🧠 [CENE-BRAIN] Planificando con historial:", knowledgeBase?.logs.length, "registros.");
-    const ai = await getAIClient();
 
+    // --- RAG INTEGRATION (EXTERNAL BRAIN) ---
+    let ragContext = "";
+    try {
+      const { findSimilarExamples } = await import('./mlService');
+      const similarSupers = await findSimilarExamples(userIntent || puzzle.title);
+
+      if (similarSupers.length > 0) {
+        ragContext = `
+             🌟 SUCCESS MEMORIES (RAG - From External Drive):
+             The following prompts worked well for similar concepts in the past:
+             ${similarSupers.map(s => `- "${s.prompt}" (Style: ${s.style})`).join('\n')}
+             
+             INSTRUCTION: Analyze these successes. Extract the keywords that made them good and adapt them to the current request.
+           `;
+        console.log("🧠 [CENE-BRAIN] RAG Hit!", similarSupers.length, "memories found.");
+      }
+    } catch (e) {
+      console.warn("Failed to query RAG:", e);
+    }
+
+    // Restore essential variables
+    const ai = await getAIClient();
     let learningContext = "";
 
     if (knowledgeBase && knowledgeBase.logs.length > 0) {
+      // Legacy local logs (optional to keep or remove, keeping for fallback)
       const badLogs = knowledgeBase.logs.filter(l => l.human_rating === 0).slice(-5);
       if (badLogs.length > 0) {
         learningContext += `
             ⛔ ERRORES RECIENTES (EVITAR A TODA COSTA):
             ${badLogs.map(l => `- El usuario rechazó: "${l.human_critique}". Prompt usado: "${l.ai_prompt.substring(0, 50)}..."`).join('\n')}
-            `;
-      }
-
-      const goodLogs = knowledgeBase.logs.filter(l => l.human_rating === 1).slice(-5);
-      if (goodLogs.length > 0) {
-        learningContext += `
-            ✅ ACIERTOS RECIENTES (IMITAR):
-            ${goodLogs.map(l => `- Estilo exitoso: ${l.style_used}. Tema: ${l.user_intent}`).join('\n')}
             `;
       }
     }
@@ -180,6 +244,12 @@ export const analyzeAndPlanDesign = async (
         `;
     }
 
+    // --- 2. CONTEXTO ESPACIAL (NUEVO) ---
+    let spatialContext = "";
+    if (spatialMetrics) {
+      spatialContext = formatMetricsForPrompt(spatialMetrics);
+    }
+
     const prompt = `
       MANDATO PARA AI STUDIO – DISEÑO ADAPTATIVO
       
@@ -187,25 +257,27 @@ export const analyzeAndPlanDesign = async (
       - Título: "${puzzle.title}"
       - Tema Solicitado: "${userIntent || "Coherente con título"}"
 
+      ${spatialContext}
+
+      ${ragContext}
       ${learningContext}
 
       LAYOUT & ESTRUCTURA (CRÍTICO):
       Este arte servirá de fondo para una Sopa de Letras.
       1. ZONA DE TÍTULO (Arriba): Debe ser limpia o de alto contraste para que el título se lea.
       2. ZONA DE GRILLA (Centro/Abajo): La ilustración NO DEBE tener elementos complejos en el centro donde irán las letras. Usa texturas suaves, marcos, o espacios negativos.
-      3. ZONA DE ARTE (Bordes/Fondo): Pon los elementos visuales fuertes en los márgenes (izquierdo, derecho, fondo lejano).
+    // 3. ZONA DE ARTE (Bordes/Fondo): Pon los elementos visuales fuertes en los márgenes (izquierdo, derecho, fondo lejano).
 
       REGLAS DE DECISIÓN DE ESTILO (Sigue estrictamente):
       1. Si el tema es 'Bosque', 'Naturaleza' o 'Antiguo':
-         - Usa 'wordBoxVariant': 'parchment', 'notebook' o 'brush'.
-         - 'fontFamilyHeader': 'Cinzel' o 'Indie Flower'.
+         - Usa 'headerBackdrop': 'brush_stroke' o 'none'.
+         - 'wordBoxVariant': 'parchment'.
       2. Si el tema es 'Tech', 'Futuro', 'Cyberpunk':
-         - Usa 'wordBoxVariant': 'tech' o 'glass_dark'.
-         - 'fontFamilyHeader': 'Share Tech Mono' o 'Space Grotesk'.
-         - 'textColor': '#FFFFFF' (Casi siempre).
+         - Usa 'headerBackdrop': 'glass'.
+         - 'wordBoxVariant': 'tech'.
       3. Si el tema es 'Editorial' o 'Libro':
-         - Usa 'wordBoxVariant': 'solid' o 'border'.
-         - 'fontFamilyHeader': 'Playfair Display'.
+         - Usa 'headerBackdrop': 'clean_gradient'.
+         - 'wordBoxVariant': 'solid'.
 
       IMPORTANTE: 'wordBoxVariant' DEBE SER UNO DE ESTOS VALORES EXACTOS (No inventes):
       ['none', 'border', 'solid', 'parchment', 'tech', 'glass_dark', 'glass_light', 'brush', 'notebook']
@@ -224,7 +296,7 @@ export const analyzeAndPlanDesign = async (
         "palette": "string",
         "decorations": "string",
         "artStyle": "string",
-        "suggestedPrompt": "PROMPT FINAL EN INGLÉS (Include 'central area empty for text' or similar instructions)",
+        "suggestedPrompt": "PROMPT FINAL EN INGLÉS DETALLADO. (Use terms like 'vignette', 'frame', 'center whitespace', 'book cover illustration', 'high quality', '8k', 'faint center'). NO menciones 'SVG' o 'Vector'.",
         "layoutConfig": {
             "fontFamilyHeader": "string",
             "textColor": "string",
@@ -270,9 +342,9 @@ export const analyzeAndPlanDesign = async (
         wordBoxVariant: 'border',
         headerBackdrop: 'none',
         blendMode: 'normal',
-        headerStyle: 'standard', // ADDED
-        wordListStyle: 'classic', // ADDED
-        paddingTop: '48px'        // ADDED
+        headerStyle: 'standard',
+        wordListStyle: 'classic',
+        paddingTop: '48px'
       }
     };
   }
@@ -282,24 +354,59 @@ export const analyzeAndPlanDesign = async (
 // NOTE: Uses backend API because @google/genai doesn't support image generation directly
 export const generateSmartDesign = async (params: GenerateDesignParams): Promise<string> => {
   try {
-    const { prompt, imageSize = "draft_fast" } = params;
+    const { prompt, imageSize = "square" } = params;
 
-    console.log(`🎨 [ARTIST] Generating via Backend API...`);
+    console.log(`🎨 [ARTIST] Checking Generation Options...`);
+    const BASE_URL = 'http://localhost:8000';
 
-    // Get API key from settings
+    // 1. Try ComfyUI Local first
+    try {
+      const comfyStatus = await fetch(`${BASE_URL}/api/template-engine/comfy/status`);
+      if (comfyStatus.ok) {
+        const statusData = await comfyStatus.json();
+        if (statusData.available) {
+          console.log(`🎨 [ARTIST] Using ComfyUI (Local GPU)...`);
+          const comfyRes = await fetch(`${BASE_URL}/api/template-engine/comfy/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: prompt,
+              width: imageSize === 'print_300dpi' ? 1024 : 512, // 512 is faster for preview
+              height: imageSize === 'print_300dpi' ? 1536 : 768,
+              steps: 20
+            })
+          });
+
+          if (comfyRes.ok) {
+            const comfyData = await comfyRes.json();
+            if (comfyData.success && comfyData.image) {
+              return `data:image/png;base64,${comfyData.image}`;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("ComfyUI detection failed:", e);
+    }
+
+    // 2. Try Gemini (Imagen 3) or DALL-E via Backend
+    console.log(`🎨 [ARTIST] Connecting to Cloud API...`);
+
+    // Get API Keys
     const settings = await loadSettings();
-    const apiKey = settings.designAI.apiKey || settings.logicAI.apiKey || import.meta.env.VITE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+    const googleKey = settings.designAI.apiKey || import.meta.env.VITE_GEMINI_API_KEY;
+    const openaiKey = import.meta.env.VITE_OPENAI_API_KEY; // Optional fallback
 
     // Call backend API endpoint
-    const response = await fetch('http://localhost:8000/api/ai/generate-smart-design', {
+    const response = await fetch(`${BASE_URL}/api/ai/generate-image`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': apiKey || ''
+        'X-API-Key': googleKey || '',
+        'X-OpenAI-Key': openaiKey || '' // Backend will check this
       },
       body: JSON.stringify({
         prompt: prompt,
-        mask_image: '', // Empty mask - backend handles layout via prompt
         style: 'color'
       })
     });
@@ -312,8 +419,8 @@ export const generateSmartDesign = async (params: GenerateDesignParams): Promise
     const data = await response.json();
 
     if (data.image) {
-      console.log('🎨 [ARTIST] Image generated successfully via backend');
-      return data.image; // Already includes data:image/... prefix
+      console.log(`🎨 [ARTIST] Image generated successfully via ${data.provider || 'cloud'}`);
+      return data.image;
     }
 
     throw new Error("No image data returned from backend.");

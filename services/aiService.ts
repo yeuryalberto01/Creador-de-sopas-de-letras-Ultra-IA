@@ -14,7 +14,7 @@ export const PROVIDER_PRESETS = {
         name: 'Google Gemini',
         providerType: 'gemini',
         baseUrl: '', // Not used for SDK
-        defaultModel: 'gemini-2.0-flash',
+        defaultModel: 'gemini-2.5-flash',
         requiresBaseUrl: false
     },
     deepseek: {
@@ -60,9 +60,9 @@ export const PROVIDER_PRESETS = {
 };
 
 export const GEMINI_MODELS = [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fast & Smart)' },
-    { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro (Best Reasoning)' },
-    { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Multimodal)' }
+    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (New & Fast)' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Stable & Smart)' },
+    { id: 'imagen-3.0-generate-001', name: 'Imagen 3 (Standard)' }
 ];
 
 export const DEEPSEEK_MODELS = [
@@ -159,22 +159,24 @@ const callGemini = async (settings: AISettings, prompt: string, schemaType?: any
 
     let contents: any[] = [prompt];
     if (imageBase64) {
-        // Remove header if present (data:image/jpeg;base64,)
-        const base64Data = imageBase64.split(',')[1] || imageBase64;
-        // For @google/genai SDK, the format for inline data might be different or specific
-        // Checking documentation or common patterns:
-        // Usually: { role: 'user', parts: [{ text: ... }, { inlineData: ... }] }
-        // But generateContent can take a simple array of parts.
+        // Extract MIME type and data dynamically
+        let mimeType = "image/png"; // Default to png if not found
+        let base64Data = imageBase64;
 
-        // Let's try the Part format for the new SDK
+        if (imageBase64.includes(';base64,')) {
+            const parts = imageBase64.split(';base64,');
+            mimeType = parts[0].replace('data:', '');
+            base64Data = parts[1];
+        }
+
         contents = [
-            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
+            { inlineData: { data: base64Data, mimeType: mimeType } },
             { text: prompt }
         ];
     }
 
     const response = await ai.models.generateContent({
-        model: settings.modelName || 'gemini-2.0-flash',
+        model: settings.modelName || 'gemini-2.5-flash',
         contents: contents,
         config: config
     });
@@ -431,7 +433,7 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
                 body: JSON.stringify({
                     prompt: prompt,
                     style: style,
-                    model: 'gemini-2.5-flash-image'
+                    model: 'imagen-3.0-generate-001'
                 })
             });
 
@@ -643,4 +645,39 @@ export const buildArtisticPrompt = (
     // Let's keep it clean and just return the positive prompt for now.
 
     return finalPrompt;
+};
+
+export const generateDesignAsset = async (settings: AISettings, prompt: string, style: 'bw' | 'color', count: number = 1): Promise<{ assets: Array<{ image: string, raw_svg: string }> }> => {
+    if (USE_BACKEND) {
+        try {
+            const response = await fetch(`${BACKEND_URL.replace('/generate', '')}/generate-smart-design`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.apiKey || ""
+                },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    style: style,
+                    count: count
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Backend Error (${response.status}): ${errText}`);
+            }
+
+            const data = await response.json();
+            // Handle legacy single format response if backend isn't fully ready (backward compatibility)
+            if (data.image && !data.assets) {
+                return { assets: [data] };
+            }
+            return data;
+        } catch (e: any) {
+            console.error("Design Generation Failed:", e);
+            throw e;
+        }
+    }
+    throw new Error("Design generation requires backend.");
 };

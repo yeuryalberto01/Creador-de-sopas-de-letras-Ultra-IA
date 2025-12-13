@@ -11,6 +11,7 @@ export interface PuzzleTemplateProps {
     onSelectElement?: (id: string) => void;
     isPrintPreview?: boolean;
     onDrag?: (id: string, x: number, y: number) => void;
+    onDoubleClick?: (id: string) => void;
 }
 
 export interface PuzzleTemplateMeta {

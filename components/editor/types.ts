@@ -1,7 +1,7 @@
 
 import { PuzzleConfig } from '../../types';
 
-export type EditorElementId = 'title' | 'grid' | 'wordList' | 'footer' | 'headerLeft' | 'headerRight' | 'pageNumber';
+export type EditorElementId = 'title' | 'grid' | 'wordList' | 'headerLeft' | 'headerRight' | 'pageNumber' | 'footerEditorial' | 'footerVolume' | 'footerQR' | (string & {});
 
 export interface EditorState {
     selectedElement: EditorElementId | null;

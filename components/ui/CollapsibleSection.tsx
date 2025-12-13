@@ -7,6 +7,8 @@ interface CollapsibleSectionProps {
     children: React.ReactNode;
     defaultOpen?: boolean;
     className?: string;
+    isOpen?: boolean;
+    onToggle?: () => void;
 }
 
 export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
@@ -14,14 +16,25 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
     icon: Icon,
     children,
     defaultOpen = true,
-    className = ""
+    className = "",
+    isOpen: controlledIsOpen,
+    onToggle
 }) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
+    const [internalIsOpen, setInternalIsOpen] = useState(defaultOpen);
+    const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+
+    const handleToggle = () => {
+        if (onToggle) {
+            onToggle();
+        } else {
+            setInternalIsOpen(!internalIsOpen);
+        }
+    };
 
     return (
         <div className={`border border-white/10 rounded-xl overflow-hidden bg-cosmic-900/40 backdrop-blur-sm transition-all duration-300 ${isOpen ? 'shadow-lg shadow-black/20' : ''} ${className}`}>
             <button
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={handleToggle}
                 className={`w-full flex items-center justify-between p-3 transition-colors text-left group ${isOpen ? 'bg-white/5' : 'hover:bg-white/5'}`}
             >
                 <div className="flex items-center gap-3 text-slate-300 font-bold text-xs uppercase tracking-wider group-hover:text-white transition-colors">

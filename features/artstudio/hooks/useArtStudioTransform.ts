@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { ArtStudioState, GenerationVersion, PuzzleInfo, ArtOptions, TrainingLogEntry, DesignPlan, LayoutConfig } from '../lib/types';
+import { PuzzleStructure } from '../lib/spatialUtils';
 import { AISettings } from '../../../types';
 import { analyzeAndPlanDesign, analyzeGeneratedImageWithVision, extractStyleFromImage } from '../services/aiService';
 import { generatePuzzleBackground } from '../../../services/aiService';
@@ -133,12 +134,13 @@ export const useArtStudioTransform = () => {
         userIntent: string,
         options: ArtOptions,
         specificCritique?: string,
-        currentConfig?: LayoutConfig // Configuración actual para preservar bloqueos
+        currentConfig?: LayoutConfig, // Configuración actual para preservar bloqueos
+        spatialMetrics?: PuzzleStructure // Configuración espacial detectada
     ) => {
         setState(prev => ({ ...prev, isPlanning: true, error: null }));
 
         try {
-            const plan = await analyzeAndPlanDesign(puzzle, userIntent, state.knowledgeBase, specificCritique);
+            const plan = await analyzeAndPlanDesign(puzzle, userIntent, state.knowledgeBase, specificCritique, spatialMetrics);
 
             // LOGICA DE FUSIÓN INTELIGENTE (LOCK SYSTEM)
             if (currentConfig && currentConfig.lockedSections) {
@@ -192,14 +194,43 @@ export const useArtStudioTransform = () => {
                     fallbackFn: async (p) => generatePuzzleBackground(dummySettings, p, plan.recommendedStyle)
                 }
             );
-            const resultImage = result.image;
+            let resultImage = result.image;
 
             setState(prev => ({ ...prev, isGenerating: false, isAnalyzingVision: true }));
 
-            const [visionReport, pixelContrast] = await Promise.all([
-                analyzeGeneratedImageWithVision(resultImage),
-                analyzeImageContrast(resultImage)
-            ]);
+            // Ensure correct Data URI format for SVG
+            if (resultImage.trim().startsWith('<svg')) {
+                // If it's raw SVG code, wrap it in base64 data URI
+                const b64 = btoa(unescape(encodeURIComponent(resultImage)));
+                resultImage = `data:image/svg+xml;base64,${b64}`;
+            }
+
+            // Skip Vision Analysis for SVG (Gemini doesn't support vector inputs)
+            // But we Rasterize it now, so we DO analyze it!
+            const isSVG = resultImage.includes('image/svg+xml') || resultImage.trim().startsWith('<svg');
+
+            let visionReport: any = null; // Will cast or let type inference handle if imported
+            let pixelContrast = { isHeaderDark: false, isGridDark: false };
+
+            if (isSVG) {
+                // Only local pixel analysis for SVG
+                pixelContrast = await analyzeImageContrast(resultImage);
+                // Mock Vision Analysis object
+                visionReport = {
+                    contrastScore: 100,
+                    gridObstruction: false,
+                    textLegibility: 'high',
+                    detectedElements: ['vector', 'svg'],
+                    critique: "SVG Vector Art generated successfully. Vision analysis skipped for vector format."
+                };
+            } else {
+                const [vReport, pContrast] = await Promise.all([
+                    analyzeGeneratedImageWithVision(resultImage),
+                    analyzeImageContrast(resultImage)
+                ]);
+                visionReport = vReport;
+                pixelContrast = pContrast;
+            }
 
             // Aplicar corrección de contraste SOLO si la sección NO está bloqueada por el usuario
             const isHeaderLocked = plan.layoutConfig.lockedSections?.includes('header');

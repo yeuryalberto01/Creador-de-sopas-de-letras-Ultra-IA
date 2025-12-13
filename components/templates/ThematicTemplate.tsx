@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PuzzleTemplateProps } from './types';
 import { DraggableElement } from '../editor/DraggableElement';
+import { useGridAutoSize } from '../../hooks/useGridAutoSize';
+import { getElementLayout } from './utils';
 
 export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
     puzzle, config, fontFamily,
     isEditMode = false, selectedElement = null, onSelectElement = () => { },
     isPrintPreview = false,
-    onDrag
+    onDrag,
+    onDoubleClick
 }) => {
     const { grid } = puzzle;
     const placedWords = puzzle.placedWords || puzzle.words || [];
@@ -15,7 +18,8 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
         title, headerLeft, headerRight, footerText,
         words, showSolution, themeData,
         backgroundImage, margins,
-        overlayOpacity, textOverlayOpacity
+        overlayOpacity, textOverlayOpacity,
+        showBorders = true
     } = config;
 
     // Thematic Defaults
@@ -35,50 +39,20 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
     const gridRows = grid.length;
     const gridCols = grid[0]?.length || 10;
 
-    // --- AUTO-ADJUST LOGIC (ResizeObserver) ---
+    // --- AUTO-ADJUST LOGIC (useGridAutoSize) ---
     const gridWrapperRef = useRef<HTMLDivElement>(null);
-    const [gridDimensions, setGridDimensions] = useState({ width: 0, height: 0 });
-
-    useEffect(() => {
-        if (!gridWrapperRef.current) return;
-
-        const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-                const maxPossibleCellWidth = width / gridCols;
-                const maxPossibleCellHeight = height / gridRows;
-                const maxFitCellSize = Math.min(maxPossibleCellWidth, maxPossibleCellHeight);
-                const MAX_ALLOWED_CELL_SIZE = 55; // Slightly larger for thematic
-                const actualCellSize = Math.min(maxFitCellSize, MAX_ALLOWED_CELL_SIZE);
-                const finalWidth = actualCellSize * gridCols;
-                const finalHeight = actualCellSize * gridRows;
-
-                if (finalWidth > 0 && finalHeight > 0) {
-                    setGridDimensions({ width: finalWidth, height: finalHeight });
-                }
-            }
-        });
-
-        observer.observe(gridWrapperRef.current);
-        return () => observer.disconnect();
-    }, [gridCols, gridRows]);
+    const { gridDimensions } = useGridAutoSize(
+        gridWrapperRef,
+        gridCols,
+        gridRows,
+        55 // MAX_ALLOWED_CELL_SIZE (Thematic allows slightly larger)
+    );
 
     const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.65;
     const fontSizePx = baseFontSizePx * (config.gridFontSizeScale || 1.0);
 
-    const getLayoutStyle = (id: string): React.CSSProperties => {
-        if (config.isFreeLayout && config.layout?.[id]) {
-            return {
-                position: 'absolute',
-                left: `${config.layout[id].x}px`,
-                top: `${config.layout[id].y}px`,
-                zIndex: 20,
-                width: 'auto',
-                maxWidth: '100%'
-            };
-        }
-        return {};
-    };
+
+    const getLayoutStyle = (id: string) => getElementLayout(config, id);
 
     // Helper for text shadows to ensure readability on busy backgrounds
     const textShadow = isPrintPreview ? 'none' : '0px 2px 4px rgba(0,0,0,0.8)';
@@ -124,12 +98,13 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
                 {/* Header */}
                 <div className="w-full flex-shrink-0 mb-4">
                     <DraggableElement
-                        id="title"
+                        id="header"
                         isEditMode={isEditMode}
-                        isSelected={selectedElement === 'title'}
+                        isSelected={selectedElement === 'header'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
-                        style={getLayoutStyle('title')}
+                        onDoubleClick={() => onDoubleClick?.('header')}
+                        style={getLayoutStyle('header')}
                     >
                         <h1
                             className="text-5xl font-black text-center uppercase tracking-widest drop-shadow-lg"
@@ -160,6 +135,7 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
                         isSelected={selectedElement === 'grid'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
+                        onDoubleClick={() => onDoubleClick?.('grid')}
                         className="transition-all duration-300"
                         style={{
                             display: 'grid',
@@ -170,7 +146,7 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
                             borderRadius: '16px',
                             padding: '16px',
                             boxShadow: isPrintPreview ? 'none' : '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-                            border: isPrintPreview ? '2px solid black' : '1px solid rgba(255,255,255,0.5)',
+                            border: showBorders ? (isPrintPreview ? '2px solid black' : '1px solid rgba(255,255,255,0.5)') : 'none',
                             backdropFilter: isPrintPreview ? 'none' : 'blur(8px)',
                             ...getLayoutStyle('grid')
                         }}
@@ -206,6 +182,7 @@ export const ThematicTemplate: React.FC<PuzzleTemplateProps> = ({
                         isSelected={selectedElement === 'wordList'}
                         onSelect={onSelectElement}
                         onDrag={onDrag}
+                        onDoubleClick={() => onDoubleClick?.('wordList')}
                         style={getLayoutStyle('wordList')}
                     >
                         <div
