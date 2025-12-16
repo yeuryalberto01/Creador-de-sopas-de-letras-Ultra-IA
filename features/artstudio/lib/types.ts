@@ -53,7 +53,7 @@ export interface LayoutConfig {
 
   // HEADER / TÍTULO 
   headerStyle: 'standard' | 'minimal' | 'hidden';
-  headerBackdrop?: 'none' | 'glass' | 'solid' | 'banner' | 'clean_gradient' | 'brush_stroke' | 'floating_card';
+  headerBackdrop?: 'none' | 'glass' | 'glass_dark' | 'solid' | 'banner' | 'clean_gradient' | 'brush_stroke' | 'floating_card';
   headerTextColor?: string;
   fontFamilyHeader: string;
   headerOffsetY?: number;
@@ -81,9 +81,10 @@ export interface LayoutConfig {
   wordBoxShadow?: string;
   fontScale?: number;
   wordBoxOffsetY?: number;
+  wordBoxScale?: number;
 
   // PIE DE PÁGINA (SMART FOOTER)
-  footerStyle?: 'simple' | 'tech' | 'barcode' | 'elegant';
+  footerStyle?: 'SIMPLE' | 'TECH' | 'BARCODE' | 'ELEGANT';
   footerOffsetY?: number;
   footerTextColor?: string;
   customFooterText?: string;
@@ -109,6 +110,7 @@ export interface ArtOptions {
   quality: ImageQuality;
   userPrompt?: string;
   feedback?: string;
+  useSmartEnhance?: boolean; // Toggle para generación híbrida
 }
 
 // --- ESTRUCTURAS DE ENTRENAMIENTO (DATASET & LOGS) ---

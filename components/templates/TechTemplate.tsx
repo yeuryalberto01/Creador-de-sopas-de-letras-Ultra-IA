@@ -171,14 +171,27 @@ export const TechTemplate: React.FC<PuzzleTemplateProps> = ({
                         {grid.map((row, y) => (
                             row.map((cell, x) => {
                                 const isSolutionCell = showSolution && cell.isWord;
+
+                                // enhanced solution visibility
+                                const cellOpacity = showSolution && !isSolutionCell ? 0.15 : 1;
+                                const cellScale = showSolution && isSolutionCell ? 1.15 : 1;
+                                const cellShadow = showSolution && isSolutionCell ? `0 0 15px ${accentColor}` : 'none';
+                                const cellZ = showSolution && isSolutionCell ? 10 : 1;
+                                const cellWeight = showSolution && isSolutionCell ? '900' : 'bold';
+
                                 return (
                                     <div
                                         key={`${x}-${y}`}
-                                        className="flex items-center justify-center font-bold text-slate-700"
+                                        className="flex items-center justify-center font-bold text-slate-700 transition-all duration-300"
                                         style={{
                                             fontSize: `${fontSizePx}px`,
+                                            fontWeight: cellWeight,
                                             color: isSolutionCell ? 'white' : undefined,
                                             backgroundColor: isSolutionCell ? accentColor : (isPrintPreview ? 'transparent' : 'rgba(255,255,255,0.4)'), // Subtle cell bg
+                                            opacity: cellOpacity,
+                                            transform: `scale(${cellScale})`,
+                                            boxShadow: cellShadow,
+                                            zIndex: cellZ,
                                             borderRadius: '6px', // Rounded cells
                                             margin: '1px' // Tiny margin for separation instead of gap
                                         }}

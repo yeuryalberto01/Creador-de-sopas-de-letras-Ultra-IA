@@ -55,6 +55,8 @@ export interface ComfyGenerateRequest {
     cfg_scale?: number;
     seed?: number;
     checkpoint?: string;
+    smart_provider?: string;
+    smart_model?: string;
 }
 
 export interface ComfyDecorateRequest {
@@ -71,6 +73,8 @@ export interface ComfyDecorateRequest {
 export interface ComfyGenerateResponse {
     success: boolean;
     image: string; // base64
+    optimized_prompt?: string;
+    engine?: string;
 }
 
 // === API Functions ===
@@ -132,6 +136,14 @@ export async function checkGPUMemory(requiredGB: number): Promise<{
     return response.json();
 }
 
+// Helper to ensure base64 prefix
+const ensureDataPrefix = (image: string): string => {
+    if (!image) return image;
+    if (image.startsWith('data:')) return image;
+    // Assume PNG for ComfyUI outputs usually
+    return `data:image/png;base64,${image}`;
+};
+
 /**
  * Generate image using ComfyUI (txt2img)
  * Requires ComfyUI to be running
@@ -150,7 +162,11 @@ export async function generateWithComfy(
         throw new Error(error.detail || 'Error generating with ComfyUI');
     }
 
-    return response.json();
+    const data: ComfyGenerateResponse = await response.json();
+    if (data.image) {
+        data.image = ensureDataPrefix(data.image);
+    }
+    return data;
 }
 
 /**
@@ -171,7 +187,59 @@ export async function decorateWithComfy(
         throw new Error(error.detail || 'Error decorating with ComfyUI');
     }
 
-    return response.json();
+    const data: ComfyGenerateResponse = await response.json();
+    if (data.image) {
+        data.image = ensureDataPrefix(data.image);
+    }
+    return data;
+}
+
+/**
+ * Generate optimized background using ComfyUI (force layout)
+ */
+export async function generateBackgroundWithComfy(
+    request: ComfyGenerateRequest
+): Promise<ComfyGenerateResponse> {
+    const response = await fetch(`${API_BASE}/comfy/background`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Error generating background with ComfyUI');
+    }
+
+    const data: ComfyGenerateResponse = await response.json();
+    if (data.image) {
+        data.image = ensureDataPrefix(data.image);
+    }
+    return data;
+}
+
+/**
+ * Generate image using Hybrid Engine (Gemini -> ComfyUI)
+ */
+export async function generateSmartWithComfy(
+    request: ComfyGenerateRequest
+): Promise<ComfyGenerateResponse> {
+    const response = await fetch(`${API_BASE}/comfy/generate-smart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Error utilizing Smart Generation');
+    }
+
+    const data: ComfyGenerateResponse = await response.json();
+    if (data.image) {
+        data.image = ensureDataPrefix(data.image);
+    }
+    return data;
 }
 
 // === Utility Functions ===
@@ -197,7 +265,7 @@ export async function isGPUBoostReady(): Promise<{
         const gpu = gpuStatus.data?.gpus?.[0];
 
         return {
-            ready: gpuAvailable && comfyAvailable,
+            ready: comfyAvailable,
             gpuAvailable,
             comfyAvailable,
             gpuName: gpu?.name || null,
@@ -224,6 +292,8 @@ export async function smartGenerate(
         width?: number;
         height?: number;
         fallbackFn?: (prompt: string) => Promise<string>;
+        smart_provider?: string;
+        smart_model?: string;
     } = {}
 ): Promise<{ image: string; usedGPU: boolean }> {
     const { preferGPU = true, width = 512, height = 512, fallbackFn } = options;
@@ -233,16 +303,21 @@ export async function smartGenerate(
 
         if (status.ready) {
             try {
-                const result = await generateWithComfy({
+                const result = await generateSmartWithComfy({
                     prompt,
                     width,
                     height,
-                    steps: 20,
-                    cfg_scale: 7.0
+                    steps: 25, // Increased quality
+                    cfg_scale: 6.0,
+                    smart_provider: options.smart_provider || 'gemini',
+                    smart_model: options.smart_model
                 });
                 return { image: result.image, usedGPU: true };
-            } catch (error) {
-                console.warn('GPU generation failed, falling back:', error);
+            } catch (error: any) {
+                console.warn('⚠️ GPU generation failed or unavailble. Switching to Cloud API Fallback.', error.message);
+
+                // If 503 or Network Error, it just means Comfy is down, so we fallback gracefully.
+                // Do NOT throw error here, just fall through to the fallbackFn below.
             }
         }
     }
@@ -264,6 +339,8 @@ export default {
     checkGPUMemory,
     generateWithComfy,
     decorateWithComfy,
+    generateBackgroundWithComfy,
+    generateSmartWithComfy,
     isGPUBoostReady,
     smartGenerate
 };

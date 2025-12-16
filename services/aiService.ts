@@ -14,7 +14,7 @@ export const PROVIDER_PRESETS = {
         name: 'Google Gemini',
         providerType: 'gemini',
         baseUrl: '', // Not used for SDK
-        defaultModel: 'gemini-2.5-flash',
+        defaultModel: 'gemini-2.0-flash',
         requiresBaseUrl: false
     },
     deepseek: {
@@ -33,22 +33,6 @@ export const PROVIDER_PRESETS = {
         defaultModel: 'grok-2-latest',
         requiresBaseUrl: false
     },
-    openai: {
-        id: 'openai',
-        name: 'OpenAI',
-        providerType: 'openai_compatible',
-        baseUrl: 'https://api.openai.com/v1',
-        defaultModel: 'gpt-4o',
-        requiresBaseUrl: false
-    },
-    openrouter: {
-        id: 'openrouter',
-        name: 'OpenRouter',
-        providerType: 'openai_compatible',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        defaultModel: 'google/gemini-2.0-flash-001',
-        requiresBaseUrl: false
-    },
     custom: {
         id: 'custom',
         name: 'Custom / Local (LM Studio/Ollama)',
@@ -60,9 +44,9 @@ export const PROVIDER_PRESETS = {
 };
 
 export const GEMINI_MODELS = [
-    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (New & Fast)' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Stable & Smart)' },
-    { id: 'imagen-3.0-generate-001', name: 'Imagen 3 (Standard)' }
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Verified Access)' },
+    { id: 'imagen-3.0-generate-001', name: 'Imagen 3.0 (Verified)' },
+    { id: 'veo-2.0-generate-001', name: 'Veo 2.0 Video Gen (Bonus)' }
 ];
 
 export const DEEPSEEK_MODELS = [
@@ -76,12 +60,7 @@ export const GROK_MODELS = [
     { id: 'grok-beta', name: 'Grok Beta' }
 ];
 
-export const OPENAI_MODELS = [
-    { id: 'gpt-4o', name: 'GPT-4o (Omni)' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-    { id: 'o1-preview', name: 'o1 Preview' },
-    { id: 'o1-mini', name: 'o1 Mini' }
-];
+
 
 
 // --- Generic Helpers ---
@@ -176,7 +155,7 @@ const callGemini = async (settings: AISettings, prompt: string, schemaType?: any
     }
 
     const response = await ai.models.generateContent({
-        model: settings.modelName || 'gemini-2.5-flash',
+        model: settings.modelName || 'gemini-2.0-flash',
         contents: contents,
         config: config
     });
@@ -333,10 +312,22 @@ const routeRequest = async (settings: AISettings, prompt: string, schema?: any):
 
 export const generateWordListAI = async (settings: AISettings, topic: string, count: number, difficulty: string): Promise<string[]> => {
     const prompt = `
-        Genera JSON con ${count} palabras en ESPAÑOL sobre "${topic}".
-                Reglas: Sin tildes, mayúsculas, sin frases.
-                    Formato: { "words": ["PALABRA1", "PALABRA2"] }
-            `;
+        Act as an Expert Puzzle Creator. Generate a word list for a Word Search Puzzle in SPANISH about "${topic}".
+        Target Audience Difficulty: ${difficulty.toUpperCase()}.
+
+        STRICT RULES:
+        1. **Format**: JSON ONLY. { "words": ["WORD1", "WORD2"] }
+        2. **Content**: 
+           - Quantity: Exactly ${count} words.
+           - Language: Spanish.
+           - Text Normalization: UPPERCASE only, NO ACCENTS (Á->A), NO SPACES, NO SPECIAL CHARS.
+        3. **Difficulty Logic**:
+           - EASY: Short, common words (3-6 letters).
+           - MEDIUM: Standard vocabulary (5-10 letters).
+           - HARD: Complex, long, or technical terms related to "${topic}".
+        
+        Output JSON ONLY.
+    `;
 
     // Gemini Schema definition
     const geminiSchema = {
@@ -366,10 +357,28 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
 
 export const generateThemeAI = async (settings: AISettings, topic: string): Promise<PuzzleTheme | null> => {
     const prompt = `
-        Generate JSON color palette for topic "${topic}".
-                Keys: primaryColor(strong), secondaryColor(pale), textColor(dark), backgroundColor(white / subtle).
-                    Format: { "primaryColor": "#...", "secondaryColor": "#...", "textColor": "#...", "backgroundColor": "#..." }
-            `;
+        Act as a an Expert UI/UX Designer for Educational Printables (Word Search Puzzles).
+        Create a Logical and Structured Color Theme for the topic: "${topic}".
+
+        Design Rules (Strict):
+        1. **Readability is King**: The 'backgroundColor' MUST be very light (white, faint cream, soft pastel) to ensure printed text is legible.
+        2. **High Contrast**: The 'textColor' MUST be very dark (black, deep charcoal, dark navy) to stand out against the background.
+        3. **Thematic Harmony**: 
+           - 'primaryColor': The main brand color (headers, bold borders). Should match the "${topic}" vibe (e.g. Red for Christmas, Orange for Halloween).
+           - 'secondaryColor': A complementary accent (grid lines, subheaders). 
+        
+        Reasoning Steps (Internal):
+        - Analyze the emotion of "${topic}".
+        - Select a palette that fits the emotion but respects the Contrast Rules.
+        
+        Output Format: JSON ONLY.
+        { 
+            "primaryColor": "#HEX", 
+            "secondaryColor": "#HEX", 
+            "textColor": "#HEX", 
+            "backgroundColor": "#HEX" 
+        }
+    `;
 
     const geminiSchema = {
         type: Type.OBJECT,
@@ -441,7 +450,11 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
                 const data = await response.json();
                 if (data.image) {
                     console.log("Imagen 3 Success!");
-                    return data.image;
+                    let img = data.image;
+                    if (!img.startsWith('data:') && !img.trim().startsWith('<svg') && !img.trim().startsWith('<?xml')) {
+                        img = `data:image/png;base64,${img}`;
+                    }
+                    return img;
                 }
             } else {
                 console.warn("Backend Imagen 3 Failed:", await response.text());
@@ -485,6 +498,22 @@ export const generatePuzzleBackground = async (settings: AISettings, prompt: str
 };
 
 import { getUserPreferences, getTasteProfile } from "./storageService";
+
+// --- Global Rules Integration ---
+const getGlobalRules = async (): Promise<string[]> => {
+    try {
+        // Assume API is on same host/port logic
+        const response = await fetch("http://localhost:8000/api/brain/rules");
+        if (response.ok) {
+            const data = await response.json();
+            // Filter only active rules
+            return data.rules.filter((r: any) => r.active).map((r: any) => r.content);
+        }
+    } catch (e) {
+        console.warn("Failed to load global rules", e);
+    }
+    return [];
+};
 
 export const createContextAwarePrompt = async (settings: AISettings, basePrompt: string, templateType: string): Promise<string> => {
     let layoutDescription = "";
@@ -534,9 +563,21 @@ export const createContextAwarePrompt = async (settings: AISettings, basePrompt:
         console.warn("Failed to load taste profile", e);
     }
 
+    // --- Global Rules Integration (Supreme Directives) ---
+    let globalRulesContext = "";
+    try {
+        const rules = await getGlobalRules();
+        if (rules.length > 0) {
+            globalRulesContext = "\nDIRECTIVAS SUPREMAS (GLOBAL RULES - HIGHEST PRIORITY):\n" + rules.map(r => `- ${r}`).join("\n") + "\n";
+        }
+    } catch (e) {
+        console.warn("Global Rules Context Failed", e);
+    }
+
     const systemPrompt = `
+            ${globalRulesContext}
             Act as an Art Director for a high - end puzzle book.
-    Refine this user prompt into a detailed image generation prompt: "${basePrompt}"
+            Refine this user prompt into a detailed image generation prompt: "${basePrompt}"
 
     ${layoutDescription}
 
@@ -559,7 +600,9 @@ export const createContextAwarePrompt = async (settings: AISettings, basePrompt:
     try {
         let response = "";
         if (settings.provider === 'gemini') {
-            response = await callGemini(settings, systemPrompt);
+            // FORCE ULTRA BRAIN (Gemini 2.5) for Logic/Reasoning
+            const logicSettings = { ...settings, modelName: 'gemini-2.0-flash' };
+            response = await callGemini(logicSettings, systemPrompt);
         } else {
             response = await callOpenAICompatible(settings, systemPrompt, false);
         }

@@ -5,6 +5,7 @@ import { PuzzleTemplateProps } from './types';
 import { useGridAutoSize } from '../../hooks/useGridAutoSize';
 import { DraggableElement } from '../editor/DraggableElement';
 import { RenderedAsset } from '../../features/design_library/components/RenderedAsset';
+import { effectsToStyle } from '../editor/effectsUtils';
 
 // --- DESIGN 2.0: PROFESSIONAL EDITOR ---
 // This component has been refactored to treat Header, Grid, and WordList as distinct
@@ -57,7 +58,7 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
             case 'FUN': return '"Comic Sans MS", "Chalkboard SE", cursive';
             case 'SCHOOL': return '"Times New Roman", Times, serif';
             case 'EDITORIAL': return '"Playfair Display", serif';
-            default: return 'Montserrat, "Inter", sans-serif';
+            default: return type ? type : 'Montserrat, "Inter", sans-serif';
         }
     };
 
@@ -245,7 +246,10 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                 >
                     <div
                         className={`w-full flex-shrink-0 text-center px-4 py-2 hover:bg-blue-50/10 transition-colors rounded-lg`}
-                        style={getSelectionStyle('header')}
+                        style={{
+                            ...getSelectionStyle('header'),
+                            ...effectsToStyle(config.headerEffects)
+                        }}
                         data-puzzle-object="header"
                         data-measure-id="puzzle-title"
                     >
@@ -301,7 +305,8 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                                 backdropFilter: backgroundImage ? 'blur(4px)' : 'none',
                                 borderRadius: '4px',
                                 boxShadow: (!isPrintPreview && backgroundImage) ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : 'none',
-                                ...getSelectionStyle('grid')
+                                ...getSelectionStyle('grid'),
+                                ...effectsToStyle(config.gridEffects)
                             }}
                             data-puzzle-object="grid"
                             data-measure-id="puzzle-grid-container"
@@ -314,17 +319,36 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                             {grid.map((row, y) => (
                                 row.map((cell, x) => {
                                     const isSolutionCell = showSolution && cell.isWord;
+
+                                    // Visual Logic: High Contrast Solution
+                                    const finalColor = showSolution
+                                        ? (isSolutionCell ? '#ffffff' : '#0f172a')
+                                        : (isSolutionCell ? (isColor ? (themeData?.primaryColor || '#0f172a') : '#0f172a') : '#334155'); // Normal text
+
+                                    const finalBg = showSolution && isSolutionCell
+                                        ? (isColor ? (themeData?.primaryColor || '#0f172a') : '#0f172a')
+                                        : 'transparent';
+
+                                    const finalOpacity = showSolution && !isSolutionCell ? 0.15 : 1;
+                                    const finalScale = showSolution && isSolutionCell ? 1.15 : 1;
+                                    const finalWeight = showSolution && isSolutionCell ? '900' : gridWeight;
+                                    const finalShadow = showSolution && isSolutionCell ? '0 4px 6px -1px rgba(0, 0, 0, 0.3)' : 'none';
+
                                     return (
                                         <div
                                             key={`${x}-${y}`}
-                                            className="flex items-center justify-center select-none"
+                                            className="flex items-center justify-center select-none transition-all duration-300"
                                             style={{
                                                 fontSize: `${fontSizePx}px`,
                                                 fontFamily: gridFont,
-                                                fontWeight: gridWeight,
-                                                color: isSolutionCell ? (isColor ? themeData.primaryColor : '#0f172a') : '#334155',
-                                                backgroundColor: isSolutionCell ? (isColor ? `${themeData.primaryColor}20` : '#e2e8f0') : 'transparent',
-                                                borderRadius: isSolutionCell ? '4px' : '0'
+                                                fontWeight: finalWeight,
+                                                color: finalColor,
+                                                backgroundColor: finalBg,
+                                                opacity: finalOpacity,
+                                                transform: `scale(${finalScale})`,
+                                                borderRadius: isSolutionCell ? '6px' : '0',
+                                                boxShadow: finalShadow,
+                                                zIndex: isSolutionCell ? 10 : 1
                                             }}
                                         >
                                             {cell.isValid ? cell.letter : ''}
@@ -350,7 +374,10 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                     <div
                         className="w-full flex-shrink-0 px-8 py-4 bg-slate-50 border-t-2 border-slate-100"
                         style={{
-                            ...getSelectionStyle('wordList')
+                            ...getSelectionStyle('wordList'),
+                            ...effectsToStyle(config.wordListEffects),
+                            transform: config.wordBoxScale ? `scale(${config.wordBoxScale})` : undefined,
+                            transformOrigin: 'top center'
                         }}
                         data-puzzle-object="wordList"
                         data-measure-id="puzzle-wordlist"

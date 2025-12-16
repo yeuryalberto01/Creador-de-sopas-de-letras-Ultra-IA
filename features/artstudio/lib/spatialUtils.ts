@@ -15,7 +15,7 @@ export interface PuzzleStructure {
     page: { width: number, height: number };
 }
 
-export const measurePuzzleElements = (): PuzzleStructure => {
+export const measurePuzzleElements = (scope?: HTMLElement | null): PuzzleStructure => {
     // We assume the main puzzle container has proper IDs or classes
     // In App.tsx or PuzzleSheet.tsx, we need to ensure these IDs exist:
     // - puzzle-page-container (The root sheet - ID remains)
@@ -24,16 +24,17 @@ export const measurePuzzleElements = (): PuzzleStructure => {
     // - puzzle-wordlist (data-measure-id)
     // - puzzle-footer (data-measure-id)
 
-    const page = document.getElementById('puzzle-page-container');
-    const grid = document.querySelector('[data-measure-id="puzzle-grid-container"]') as HTMLElement;
-    const title = document.querySelector('[data-measure-id="puzzle-title"]') as HTMLElement;
-    const wordList = document.querySelector('[data-measure-id="puzzle-wordlist"]') as HTMLElement;
-    const footer = document.querySelector('[data-measure-id="puzzle-footer"]') as HTMLElement;
+    const page = scope || document.getElementById('puzzle-page-container');
 
     if (!page) {
         console.warn("SpatialUtils: Puzzle page container not found!");
         return { grid: null, title: null, wordList: null, footer: null, page: { width: 0, height: 0 } };
     }
+
+    const grid = page.querySelector('[data-measure-id="puzzle-grid-container"]') as HTMLElement;
+    const title = page.querySelector('[data-measure-id="puzzle-title"]') as HTMLElement;
+    const wordList = page.querySelector('[data-measure-id="puzzle-wordlist"]') as HTMLElement;
+    const footer = page.querySelector('[data-measure-id="puzzle-footer"]') as HTMLElement;
 
     const pageRect = page.getBoundingClientRect();
 

@@ -4,11 +4,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { ArtStudioState, GenerationVersion, PuzzleInfo, ArtOptions, TrainingLogEntry, DesignPlan, LayoutConfig } from '../lib/types';
 import { PuzzleStructure } from '../lib/spatialUtils';
 import { AISettings } from '../../../types';
-import { analyzeAndPlanDesign, analyzeGeneratedImageWithVision, extractStyleFromImage } from '../services/aiService';
+import { analyzeAndPlanDesign, analyzeGeneratedImageWithVision, extractStyleFromImage, generateWithDirector, DirectorBrief } from '../services/aiService';
 import { generatePuzzleBackground } from '../../../services/aiService';
 import { analyzeImageContrast } from '../lib/pixelAnalysis';
 import { StorageFactory } from '../services/storageService';
 import * as gpuService from '../../../services/gpuService';
+import { updateUserProfile, analyzeImageFeatures } from '../../../services/mlService';
+import { getMLProfile, saveMLProfile } from '../../../services/storageService';
 
 const storage = StorageFactory.getProvider();
 
@@ -134,128 +136,89 @@ export const useArtStudioTransform = () => {
         userIntent: string,
         options: ArtOptions,
         specificCritique?: string,
-        currentConfig?: LayoutConfig, // Configuración actual para preservar bloqueos
-        spatialMetrics?: PuzzleStructure // Configuración espacial detectada
+        currentConfig?: LayoutConfig, // Configuration to preserve locks
+        spatialMetrics?: PuzzleStructure, // Detected spatial configuration
+        smartProvider?: string // NEW: Selected AI provider for hybrid mode
     ) => {
+        // --- 1. PREPARACIÓN (Director Brief) ---
         setState(prev => ({ ...prev, isPlanning: true, error: null }));
 
+        // Construir el Brief para el Director
+        const brief: DirectorBrief = {
+            tema: puzzle.title + (userIntent ? ` (${userIntent})` : ""),
+            publico: "general", // Podríamos extraerlo de puzzle.levelText
+            estilo: options.visualStyle,
+            titulo: puzzle.title,
+            palabras: puzzle.words,
+            modo: options.quality === 'draft_fast' ? 'explorar' : 'producir',
+            paleta: [] // Dejar que el Director decida
+        };
+
         try {
-            const plan = await analyzeAndPlanDesign(puzzle, userIntent, state.knowledgeBase, specificCritique, spatialMetrics);
-
-            // LOGICA DE FUSIÓN INTELIGENTE (LOCK SYSTEM)
-            if (currentConfig && currentConfig.lockedSections) {
-                const locked = currentConfig.lockedSections;
-
-                // Si Header está bloqueado, restaurar props de header del config viejo
-                if (locked.includes('header')) {
-                    plan.layoutConfig.fontFamilyHeader = currentConfig.fontFamilyHeader;
-                    plan.layoutConfig.headerStyle = currentConfig.headerStyle;
-                    plan.layoutConfig.headerBackdrop = currentConfig.headerBackdrop;
-                    plan.layoutConfig.headerTextColor = currentConfig.headerTextColor;
-                    plan.layoutConfig.headerOffsetY = currentConfig.headerOffsetY;
-                    plan.layoutConfig.headerScale = currentConfig.headerScale;
-                }
-                // Si Grilla está bloqueada
-                if (locked.includes('grid')) {
-                    plan.layoutConfig.fontFamilyGrid = currentConfig.fontFamilyGrid;
-                    plan.layoutConfig.gridTextColor = currentConfig.gridTextColor;
-                    plan.layoutConfig.gridBorderColor = currentConfig.gridBorderColor;
-                    plan.layoutConfig.gridBackground = currentConfig.gridBackground;
-                    plan.layoutConfig.gridBorderWidth = currentConfig.gridBorderWidth;
-                    plan.layoutConfig.gridRadius = currentConfig.gridRadius;
-                    plan.layoutConfig.gridShadow = currentConfig.gridShadow;
-                    plan.layoutConfig.gridOffsetY = currentConfig.gridOffsetY;
-                }
-                // Si Caja está bloqueada
-                if (locked.includes('box')) {
-                    plan.layoutConfig.wordListStyle = currentConfig.wordListStyle;
-                    plan.layoutConfig.wordBoxVariant = currentConfig.wordBoxVariant;
-                    plan.layoutConfig.wordBoxTextColor = currentConfig.wordBoxTextColor;
-                    plan.layoutConfig.wordBoxBackground = currentConfig.wordBoxBackground;
-                    plan.layoutConfig.wordBoxBorderColor = currentConfig.wordBoxBorderColor;
-                    plan.layoutConfig.wordBoxOffsetY = currentConfig.wordBoxOffsetY;
-                }
-
-                // Preservar la lista de bloqueos en el nuevo plan
-                plan.layoutConfig.lockedSections = locked;
-            }
-
+            // --- 2. EJECUCIÓN (Backend Director) ---
             setState(prev => ({ ...prev, isPlanning: false, isGenerating: true }));
 
-            // Determinar tamaño basado en calidad
-            const dim = options.quality === 'print_300dpi' ? 1536 : 768; // 2K vs Draft
+            console.log("🎬 [FRONTEND] Delegating to Director:", brief);
+            const result = await generateWithDirector(brief);
 
-            const result = await gpuService.smartGenerate(
-                plan.suggestedPrompt,
-                {
-                    preferGPU: true,
-                    width: dim,
-                    height: dim,
-                    fallbackFn: async (p) => generatePuzzleBackground(dummySettings, p, plan.recommendedStyle)
-                }
-            );
-            let resultImage = result.image;
-
+            // --- 3. PROCESAMIENTO ---
             setState(prev => ({ ...prev, isGenerating: false, isAnalyzingVision: true }));
 
-            // Ensure correct Data URI format for SVG
-            if (resultImage.trim().startsWith('<svg')) {
-                // If it's raw SVG code, wrap it in base64 data URI
-                const b64 = btoa(unescape(encodeURIComponent(resultImage)));
-                resultImage = `data:image/svg+xml;base64,${b64}`;
-            }
+            // El backend ya hizo QC y todo
+            const resultImage = result.final_image;
 
-            // Skip Vision Analysis for SVG (Gemini doesn't support vector inputs)
-            // But we Rasterize it now, so we DO analyze it!
-            const isSVG = resultImage.includes('image/svg+xml') || resultImage.trim().startsWith('<svg');
+            // Reconstruir un DesignPlan parcial para la UI
+            const partialPlan: DesignPlan = {
+                recommendedStyle: (result.plan?.art_style as any) || options.visualStyle,
+                concept: result.plan?.theme || "Generated by Hybrid Director",
+                background: "Director Generated",
+                characters: "N/A",
+                gridTreatment: "Director Generated",
+                wordListTreatment: "Director Generated",
+                palette: result.plan?.color_palette?.join(', ') || "Director Palette",
+                decorations: "Classic",
+                artStyle: result.plan?.art_style || options.visualStyle,
+                suggestedPrompt: "Managed by Backend Director",
+                layoutConfig: {
+                    // Mantener configuración actual del usuario si existe
+                    // O usar defaults seguros
+                    fontFamilyHeader: currentConfig?.fontFamilyHeader || 'Playfair Display',
+                    fontFamilyGrid: currentConfig?.fontFamilyGrid || 'Inter',
+                    textColor: currentConfig?.textColor || '#000000',
+                    gridBackground: currentConfig?.gridBackground || 'rgba(255,255,255,0.9)',
+                    gridBorderColor: currentConfig?.gridBorderColor || '#000000',
+                    wordListStyle: currentConfig?.wordListStyle || 'classic',
+                    headerStyle: currentConfig?.headerStyle || 'standard',
+                    wordBoxVariant: currentConfig?.wordBoxVariant || 'none',
+                    lockedSections: currentConfig?.lockedSections || [],
+                    headerBackdrop: currentConfig?.headerBackdrop,
+                    headerTextColor: currentConfig?.headerTextColor,
+                    gridTextColor: currentConfig?.gridTextColor,
+                    paddingTop: currentConfig?.paddingTop || '50px'
+                }
+            };
 
-            let visionReport: any = null; // Will cast or let type inference handle if imported
-            let pixelContrast = { isHeaderDark: false, isGridDark: false };
-
-            if (isSVG) {
-                // Only local pixel analysis for SVG
-                pixelContrast = await analyzeImageContrast(resultImage);
-                // Mock Vision Analysis object
+            // Si hay problemas de QC reportados por el backend
+            let visionReport: any = null;
+            if (result.qc_result) {
                 visionReport = {
-                    contrastScore: 100,
-                    gridObstruction: false,
-                    textLegibility: 'high',
-                    detectedElements: ['vector', 'svg'],
-                    critique: "SVG Vector Art generated successfully. Vision analysis skipped for vector format."
+                    contrastScore: result.qc_result.title_contrast ? result.qc_result.title_contrast * 10 : 90,
+                    gridObstruction: result.qc_result.grid_integrity < 0.9,
+                    textLegibility: result.qc_result.passed ? 'high' : 'medium',
+                    detectedElements: [],
+                    critique: result.qc_result.issues?.join(', ') || "Director Approved"
                 };
-            } else {
-                const [vReport, pContrast] = await Promise.all([
-                    analyzeGeneratedImageWithVision(resultImage),
-                    analyzeImageContrast(resultImage)
-                ]);
-                visionReport = vReport;
-                pixelContrast = pContrast;
-            }
-
-            // Aplicar corrección de contraste SOLO si la sección NO está bloqueada por el usuario
-            const isHeaderLocked = plan.layoutConfig.lockedSections?.includes('header');
-            const isGridLocked = plan.layoutConfig.lockedSections?.includes('grid');
-            const isBoxLocked = plan.layoutConfig.lockedSections?.includes('box');
-
-            if (!isHeaderLocked && pixelContrast.isHeaderDark) {
-                plan.layoutConfig.textColor = '#FFFFFF';
-                plan.layoutConfig.headerBackdrop = plan.layoutConfig.headerBackdrop === 'none' ? 'glass' : plan.layoutConfig.headerBackdrop;
-            }
-            if (!isGridLocked && !isBoxLocked && pixelContrast.isGridDark) {
-                plan.layoutConfig.gridTextColor = '#FFFFFF';
-                plan.layoutConfig.wordBoxTextColor = '#FFFFFF';
-                if (plan.layoutConfig.wordBoxVariant === 'none') plan.layoutConfig.wordBoxVariant = 'glass_dark';
             }
 
             const newVersion: GenerationVersion = {
-                id: Date.now().toString(),
+                id: result.generation_id || Date.now().toString(),
                 timestamp: Date.now(),
-                imageUrl: resultImage,
-                promptUsed: plan.suggestedPrompt,
-                designPlan: plan,
+                imageUrl: resultImage.startsWith('data:') ? resultImage : `data:image/png;base64,${resultImage}`,
+                promptUsed: "Director Pipeline",
+                designPlan: partialPlan,
                 visionAnalysis: visionReport,
                 optionsSnapshot: {
-                    visualStyle: plan.recommendedStyle,
+                    visualStyle: partialPlan.recommendedStyle,
                     styleIntensity: 'full',
                     quality: options.quality,
                     userPrompt: userIntent
@@ -286,6 +249,7 @@ export const useArtStudioTransform = () => {
         const current = state.currentVersion;
         if (!current) return;
 
+        // 1. Save Log (raw data)
         const newLog: TrainingLogEntry = {
             id: Date.now().toString(),
             timestamp: new Date().toISOString(),
@@ -297,8 +261,29 @@ export const useArtStudioTransform = () => {
             tags: tags,
             style_used: current.designPlan?.recommendedStyle || "unknown"
         };
-
         await storage.saveLog(newLog);
+
+        // 2. Update BRAIN (ML Profile)
+        try {
+            const currentProfile = await getMLProfile();
+            // Infer features for learning
+            const features = await analyzeImageFeatures(
+                current.optionsSnapshot.userPrompt || "",
+                current.designPlan?.recommendedStyle || "editorial_pro"
+            );
+
+            const updatedProfile = await updateUserProfile(currentProfile, features, rating, {
+                prompt: current.optionsSnapshot.userPrompt || "General",
+                styleId: current.designPlan?.recommendedStyle || "unknown",
+                reason: critiqueText,
+                details: tags.join(', ')
+            });
+
+            await saveMLProfile(updatedProfile);
+            console.log("🧠 [CENE-BRAIN] User Profile Updated:", updatedProfile);
+        } catch (e) {
+            console.warn("Failed to update ML profile:", e);
+        }
 
         const updatedKB = await storage.loadKnowledgeBase();
 

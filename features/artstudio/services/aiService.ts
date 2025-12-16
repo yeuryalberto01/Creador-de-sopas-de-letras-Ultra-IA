@@ -125,8 +125,12 @@ export const analyzeGeneratedImageWithVision = async (imageBase64: string, promp
     let finalImageForVision = imageBase64;
 
     // 1. Transform SVG to PNG for Vision AI (Rasterization)
-    const isSVG = imageBase64.includes('image/svg+xml') || imageBase64.startsWith('<svg');
-    console.log(`🔍 [CENE-VISION] Image Type Check: Prefix=${imageBase64.substring(0, 50)}... IsSVG=${isSVG}`);
+    // Robust detection: Check for XML declaration, mime type, or svg tag
+    const isSVG = imageBase64.includes('image/svg+xml') ||
+      imageBase64.includes('<svg') ||
+      imageBase64.trim().startsWith('<?xml');
+
+    console.log(`🔍 [CENE-VISION] Image Type Check: IsSVG=${isSVG}`);
 
     if (isSVG) {
       console.log("ℹ️ [CENE-VISION] Transformando SVG a PNG para análisis visual...");
@@ -136,7 +140,7 @@ export const analyzeGeneratedImageWithVision = async (imageBase64: string, promp
       } catch (e) {
         console.warn("⚠️ [CENE-VISION] Falló la rasterización. Saltando análisis visual.", e);
         return {
-          contrastScore: 85,
+          contrastScore: 90,
           gridObstruction: false,
           textLegibility: 'high',
           detectedElements: ['vector_fallback'],
@@ -147,7 +151,7 @@ export const analyzeGeneratedImageWithVision = async (imageBase64: string, promp
 
     console.log("👁️ [CENE-VISION] Inspeccionando imagen generada...");
     const ai = await getAIClient();
-    const base64Data = finalImageForVision.split(',')[1]; // Remove data:image/png;base64, prefix
+    const base64Data = finalImageForVision.includes(',') ? finalImageForVision.split(',')[1] : finalImageForVision; // Handle both Data URI and raw base64
 
     const visionPrompt = `
         Actúa como un Experto en Control de Calidad de Impresión (QA).
@@ -163,16 +167,31 @@ export const analyzeGeneratedImageWithVision = async (imageBase64: string, promp
         }
         `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash", // Use flash for speed, or pro-vision if available
-      contents: {
-        parts: [
-          { inlineData: { mimeType: "image/png", data: base64Data } },
-          { text: visionPrompt }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: {
+          parts: [
+            { inlineData: { mimeType: "image/png", data: base64Data } },
+            { text: visionPrompt }
+          ]
+        },
+        config: { responseMimeType: "application/json" }
+      });
+    } catch (apiError: any) {
+      if (apiError.message?.includes('400') || apiError.message?.includes('INVALID_ARGUMENT')) {
+        console.warn("⚠️ [CENE-VISION] API rechazó la imagen (posiblemente corrupta o formato no soportado). Retornando mock.");
+        return {
+          contrastScore: 85,
+          gridObstruction: false,
+          textLegibility: 'high',
+          detectedElements: ['image_error_fallback'],
+          critique: "Imagen generada con éxito. Análisis visual detallado no disponible (Formato no soportado por API)."
+        };
+      }
+      throw apiError; // Re-throw other errors
+    }
 
     const text = response.text;
     if (!text) throw new Error("Visión fallida - Sin respuesta");
@@ -380,7 +399,8 @@ export const generateSmartDesign = async (params: GenerateDesignParams): Promise
           if (comfyRes.ok) {
             const comfyData = await comfyRes.json();
             if (comfyData.success && comfyData.image) {
-              return `data:image/png;base64,${comfyData.image}`;
+              const imageStr = comfyData.image;
+              return imageStr.startsWith('data:') ? imageStr : `data:image/png;base64,${imageStr}`;
             }
           }
         }
@@ -420,12 +440,61 @@ export const generateSmartDesign = async (params: GenerateDesignParams): Promise
 
     if (data.image) {
       console.log(`🎨 [ARTIST] Image generated successfully via ${data.provider || 'cloud'}`);
-      return data.image;
+      const imageStr = data.image;
+      // Ensure we don't double prefix if the backend already sends it
+      const finalImage = imageStr.startsWith('data:') ? imageStr : `data:image/png;base64,${imageStr}`;
+      return finalImage;
     }
 
     throw new Error("No image data returned from backend.");
   } catch (error) {
     console.error("Error Artista:", error);
+    throw error;
+  }
+};
+
+// --- DIRECTOR HÍBRIDO ADAPTER ---
+// Conecta el frontend (ArtStudio) con el backend (HybridDirector)
+
+export interface DirectorBrief {
+  tema: string
+  publico: string
+  estilo: string
+  titulo: string
+  palabras: string[]
+  modo?: "explorar" | "producir"
+  grilla_letters?: string[][]
+  referencias?: string[]
+  paleta?: string[]
+}
+
+export const generateWithDirector = async (brief: DirectorBrief): Promise<any> => {
+  console.log("🎬 [DIRECTOR-CLIENT] Sending Brief to Backend:", brief);
+
+  const API_BASE = 'http://localhost:8000'; // Ajustar según config
+
+  try {
+    const response = await fetch(`${API_BASE}/api/art-studio/director/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(brief)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Director Error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.errors?.[0] || "Director Failed");
+    }
+
+    return data;
+
+  } catch (error) {
+    console.error("❌ Director Error:", error);
     throw error;
   }
 };

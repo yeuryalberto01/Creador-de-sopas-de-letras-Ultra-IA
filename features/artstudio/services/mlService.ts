@@ -1,4 +1,4 @@
-import { VisualFeatures, MLUserProfile } from '../types';
+import { VisualFeatures, MLUserProfile } from '../../../types';
 
 // RAG Types
 export interface TrainingExample {

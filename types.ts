@@ -126,13 +126,20 @@ export interface PuzzleConfig {
   };
 
   // Art Studio / Detailed Style Overrides - Independent Typography per Element
-  fontFamilyHeader?: FontType;   // Typography for header/title
-  fontFamilyGrid?: FontType;     // Typography for grid letters
-  fontFamilyWordList?: FontType; // Typography for word list
+  fontFamilyHeader?: FontType | string;   // Typography for header/title
+  fontFamilyGrid?: FontType | string;     // Typography for grid letters
+  fontFamilyWordList?: FontType | string; // Typography for word list
   // Bold toggles per element
   boldHeader?: boolean;
   boldGrid?: boolean;
   boldWordList?: boolean;
+
+  // 🎨 Canvas Effects per Element
+  headerEffects?: ElementEffects;
+  gridEffects?: ElementEffects;
+  wordListEffects?: ElementEffects;
+
+  // Legacy style fields (deprecated, use effects instead)
   headerStyle?: string;
   wordListStyle?: string;
   gridBorderColor?: string;
@@ -141,11 +148,45 @@ export interface PuzzleConfig {
   gridRadius?: string;
   textShadow?: string;
   wordBoxVariant?: string;
+  wordBoxScale?: number;
   headerBackdrop?: string;
   textStrokeWidth?: string;
   blendMode?: string;
   marketingText?: string;
   designAssets?: DesignAssetInstance[];
+}
+
+// 🎨 Canvas Effects System - Per-Element Visual Properties
+export interface ElementEffects {
+  // Shadow Effect
+  shadowEnabled?: boolean;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+
+  // Outline/Border Effect
+  outlineEnabled?: boolean;
+  outlineColor?: string;
+  outlineWidth?: number;
+  outlineStyle?: 'solid' | 'dashed' | 'dotted' | 'double';
+
+  // Background Effect
+  backgroundEnabled?: boolean;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+  backgroundGradient?: string;
+
+  // Transform Effect
+  rotation?: number;
+  scale?: number;
+  skewX?: number;
+  skewY?: number;
+
+  // Visual Properties
+  opacity?: number;
+  borderRadius?: number;
+  blur?: number;
 }
 
 export interface DesignAssetInstance {

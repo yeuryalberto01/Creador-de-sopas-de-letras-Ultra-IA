@@ -1,9 +1,10 @@
 
 import React from 'react';
 import { EditorElementId } from './types';
-import { PuzzleConfig } from '../../types';
+import { PuzzleConfig, ElementEffects } from '../../types';
 import { Type, Palette, Move, Maximize, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Layout, List, Square, Circle, Heart, Star, X, Plus, Grid3X3 } from 'lucide-react';
 import { CollapsibleSection } from '../../components/ui/CollapsibleSection';
+import { EffectsPanel } from './EffectsPanel';
 
 interface PropertyPanelProps {
     selectedElement: EditorElementId | null;
@@ -182,6 +183,13 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                                 </div>
                             </div>
                         </CollapsibleSection>
+
+                        {/* 🎨 Canvas Effects for Header */}
+                        <EffectsPanel
+                            effects={config.headerEffects || {}}
+                            onChange={(effects) => onUpdateConfig({ headerEffects: effects })}
+                            elementName="Header"
+                        />
                     </div>
                 )}
 
@@ -242,6 +250,13 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                                 </div>
                             </div>
                         </CollapsibleSection>
+
+                        {/* 🎨 Canvas Effects for Grid */}
+                        <EffectsPanel
+                            effects={config.gridEffects || {}}
+                            onChange={(effects) => onUpdateConfig({ gridEffects: effects })}
+                            elementName="Grilla"
+                        />
                     </div>
                 )}
 
@@ -272,6 +287,14 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                                 </button>
                             </div>
                         </CollapsibleSection>
+
+                        {/* 🎨 Canvas Effects for WordList */}
+                        <EffectsPanel
+                            effects={config.wordListEffects || {}}
+                            onChange={(effects) => onUpdateConfig({ wordListEffects: effects })}
+                            elementName="Lista de Palabras"
+                        />
+
                         {renderVocabularySection()}
                     </div>
                 )}

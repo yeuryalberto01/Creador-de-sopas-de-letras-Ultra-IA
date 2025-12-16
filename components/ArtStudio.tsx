@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { PuzzleInfo, ArtOptions, LayoutConfig, DesignPlan } from '../features/artstudio/lib/types';
 import { useArtStudioTransform } from '../features/artstudio/hooks/useArtStudioTransform';
-import { PuzzleStructure } from '../features/artstudio/lib/spatialUtils'; // Import this
+import { PuzzleStructure, measurePuzzleElements } from '../features/artstudio/lib/spatialUtils'; // Import measurement logic
 import PuzzleSheet from './PuzzleSheet';
 import { GeneratedPuzzle, PuzzleConfig } from '../types';
 import {
@@ -93,12 +93,14 @@ const TabButton: React.FC<TabButtonProps> = ({ id, icon: Icon, label, active, on
 );
 
 export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, onSave, gridSnapshot, spatialMetrics }) => {
-    const [options, setOptions] = useState<ArtOptions>({
+    const [options, setOptions] = useState<ArtOptions & { useSmartEnhance?: boolean; smartProvider?: string }>({
         visualStyle: 'editorial_pro',
         styleIntensity: 'medium',
         quality: 'draft_fast',
         userPrompt: '',
-        feedback: ''
+        feedback: '',
+        useSmartEnhance: false, // Default to standard generation
+        smartProvider: "gemini" // Added smartProvider with default value
     });
 
     const [zoom, setZoom] = useState(0.55);
@@ -120,6 +122,7 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
 
     const [currentPlan, setCurrentPlan] = useState<DesignPlan | null>(null);
     const [isExporting, setIsExporting] = useState(false);
+    const [visualMetrics, setVisualMetrics] = useState<PuzzleStructure | null>(null); // State for layout visualization
 
     // GPU Boost State
     const [gpuBoostEnabled, setGpuBoostEnabled] = useState(false);
@@ -146,10 +149,22 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
             }, 300);
         } else if (isGenerating) {
             setProgress(0);
-            setLoadingStep(`🎨 PINTANDO PIXELES (Nanobanana Pro)...`);
+            // Progress Logic: Adapt speed based on provider (Cloud = Fast / Local GPU = Slow)
+            const slowMode = gpuBoostEnabled;
+            const increment = slowMode ? 0.2 : 1.5; // Much slower for local GPU
+            const intervalTime = slowMode ? 300 : 200;
+
+            if (slowMode) setLoadingStep(`🎨 GPU LOCAL CHUGGING ALONG... (Esto puede tardar unos minutos)`);
+            else setLoadingStep(`🎨 PINTANDO PIXELES (AI Art Engine)...`);
+
+            let seconds = 0;
             interval = setInterval(() => {
-                setProgress(prev => Math.min(99, prev + Math.random() * 2));
-            }, 200);
+                seconds++;
+                if (slowMode && seconds > 30 && seconds < 60) setLoadingStep(`🐢 Renderizado detallado en proceso...`);
+                if (slowMode && seconds > 60) setLoadingStep(`☕ Tu GPU está trabajando duro... no cierres.`);
+
+                setProgress(prev => Math.min(99, prev + (Math.random() * increment)));
+            }, intervalTime);
         } else if (isAnalyzingVision) {
             setProgress(100);
             setLoadingStep("👁️ VERIFICANDO CALIDAD...");
@@ -190,6 +205,12 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                 gpuName: status.gpuName,
                 vramFreeGB: status.vramFreeGB
             });
+
+            // AUTO-ENABLE GPU BOOST if detected!
+            if (status.ready) {
+                setGpuBoostEnabled(true);
+                console.log("🚀 [ART STUDIO] GPU Boost Auto-Enabled");
+            }
         } catch (error) {
             console.warn('GPU check failed:', error);
             setGpuStatus({ ready: false, gpuName: null, vramFreeGB: null });
@@ -243,11 +264,22 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
     // Override config takes precedence (user edits in Studio), then base config (sync with Color view)
     const finalLayoutConfig = { ...baseLayoutConfig, ...overrideConfig };
 
-    const handleSmartGenerate = async () => {
+    // Live Measurement Effect for Visualization (Moved here to access finalLayoutConfig correctly if needed, though mostly depends on DOM)
+    useEffect(() => {
+        const updateVisuals = () => {
+            if (captureRef.current) {
+                const m = measurePuzzleElements(captureRef.current);
+                setVisualMetrics(m);
+            }
+        };
+        const timer = setTimeout(updateVisuals, 300);
+        return () => clearTimeout(timer);
+    }, [puzzle, config, finalLayoutConfig, editTab, zoom]);
+
+    const handleSmartGenerate = async (prompt: string, provider: string = 'gemini') => {
         try {
             // 1. Capture Layout Metrics from DOM
-            const { measurePuzzleElements } = await import('../features/artstudio/lib/spatialUtils');
-            const metrics = measurePuzzleElements();
+            const metrics = measurePuzzleElements(captureRef.current); // Use scoped measurement
 
             console.log("📐 [ART STUDIO] Spatial Analysis:", metrics);
 
@@ -263,7 +295,16 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
             };
 
             // Pass the CAPTURED metrics, not the prop (which might be stale)
-            await executeSmartGeneration(puzzleInfo, intent, options, undefined, finalLayoutConfig, metrics);
+            // Enhanced: pass 'options' which now includes useSmartEnhance
+            await executeSmartGeneration(
+                puzzleInfo,
+                prompt,
+                options,
+                undefined,
+                finalLayoutConfig, // Pass current layout to allow locking
+                spatialMetrics,
+                provider // Pass the selected smart provider
+            );
         } catch (e) { console.error(e); }
     };
 
@@ -446,9 +487,25 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                                 </div>
                             )}
                             {gpuBoostEnabled && gpuStatus.ready && (
-                                <div className="mt-2 text-[9px] text-green-300 flex items-center gap-1">
-                                    <Check className="w-3 h-3" />
-                                    GPU Boost activo - Usando RTX local
+                                <div className="flex flex-col gap-2">
+                                    <div className={`mt-2 text-[9px] flex items-center gap-1 ${gpuStatus.gpuName ? 'text-green-300' : 'text-yellow-300'}`}>
+                                        {gpuStatus.gpuName ? <Check className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                        {gpuStatus.gpuName ? `GPU Boost activo - Usando ${gpuStatus.gpuName}` : "ComfyUI Online (Modo CPU)"}
+                                    </div>
+
+                                    {/* Brain Selector */}
+                                    <div className="flex items-center gap-2 mt-1 bg-black/20 p-1.5 rounded-lg border border-white/5">
+                                        <span className="text-[10px] text-slate-400">Cerebro:</span>
+                                        <select
+                                            className="bg-transparent text-[10px] text-indigo-300 border-none outline-none cursor-pointer"
+                                            value={options.smartProvider || 'gemini'}
+                                            onChange={(e) => setOptions({ ...options, smartProvider: e.target.value })}
+                                        >
+                                            <option value="gemini">Gemini 2.0 Flash (Google)</option>
+                                            <option value="deepseek">DeepSeek R1 (China)</option>
+                                            <option value="grok">Grok 2 (xAI)</option>
+                                        </select>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -472,6 +529,18 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                                     <PenTool className="w-3 h-3" /> Prompt Manual
                                 </label>
                             </Tooltip>
+
+                            {/* SMART ENHANCE TOGGLE */}
+                            <Tooltip text="Activar Cerebro Híbrido: Gemini mejora tu prompt y ComfyUI genera la imagen.">
+                                <button
+                                    onClick={() => setOptions({ ...options, useSmartEnhance: !options.useSmartEnhance })}
+                                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-bold uppercase transition-all border ${options.useSmartEnhance ? 'bg-indigo-500 text-white border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
+                                >
+                                    <BrainCircuit className={`w-3 h-3 ${options.useSmartEnhance ? 'animate-pulse text-white' : ''}`} />
+                                    {options.useSmartEnhance ? 'AI PRO OPTIMIZER ON' : 'AI OPTIMIZER OFF'}
+                                </button>
+                            </Tooltip>
+
                             <div className="bg-black/40 p-0.5 rounded-lg flex border border-white/10">
                                 <Tooltip text="Generación rápida (1K) para pruebas de concepto">
                                     <button onClick={() => setOptions({ ...options, quality: 'draft_fast' })} className={`px-2 py-0.5 rounded-md text-[9px] font-bold transition-all ${options.quality === 'draft_fast' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>BOCETO</button>
@@ -483,28 +552,35 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                         </div>
 
                         <div className="relative group/input">
-                            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-xl blur opacity-0 group-hover/input:opacity-100 transition-opacity"></div>
+                            <div className={`absolute inset-0 bg-gradient-to-r ${options.useSmartEnhance ? 'from-pink-500/20 via-purple-500/20 to-indigo-500/20' : 'from-indigo-500/20 to-purple-500/20'} rounded-xl blur opacity-0 group-hover/input:opacity-100 transition-opacity duration-700`}></div>
                             <textarea
                                 value={options.userPrompt}
                                 onChange={(e) => setOptions({ ...options, userPrompt: e.target.value })}
-                                placeholder="Describe tu visión..."
-                                className="w-full h-24 bg-black/40 text-white border border-white/10 rounded-xl p-4 text-sm focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 relative z-10 placeholder:text-white/20"
+                                placeholder={options.useSmartEnhance ? "💡 Idea simple: 'un perro astronauta'... (Gemini se encarga de los detalles técnicos)" : "Describe tu visión técnica detallada..."}
+                                className={`w-full h-24 bg-black/40 text-white border ${options.useSmartEnhance ? 'border-indigo-500/30 ring-1 ring-indigo-500/20' : 'border-white/10'} rounded-xl p-4 text-sm focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 relative z-10 placeholder:text-white/20 transition-all`}
                             />
+                            {options.useSmartEnhance && (
+                                <div className="absolute bottom-3 right-3 z-20 flex gap-1 pointer-events-none">
+                                    <span className="text-[10px] text-indigo-300/60 font-mono flex items-center gap-1">
+                                        <Sparkles className="w-3 h-3" /> Gemini 2.0 Flash Active
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {/* GENERATE BUTTON */}
-                    <Tooltip text="Ejecutar análisis de estructura y generación de arte">
+                    <Tooltip text={options.useSmartEnhance ? "Generar con Potencia Híbrida (Gemini -> ComfyUI)" : "Generación Estándar"}>
                         <button
-                            onClick={handleSmartGenerate}
+                            onClick={() => handleSmartGenerate(options.userPrompt, options.smartProvider)}
                             disabled={isPlanning || isGenerating || isAnalyzingVision}
                             className={`w-full py-5 rounded-2xl font-bold text-white text-sm tracking-widest uppercase shadow-2xl relative overflow-hidden group/btn transition-all active:scale-[0.98] ${isPlanning || isGenerating ? 'opacity-80 cursor-wait' : ''}`}
                         >
-                            <div className={`absolute inset-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 transition-all duration-1000 ${isGenerating ? 'animate-gradient' : ''}`}></div>
+                            <div className={`absolute inset-0 bg-gradient-to-r ${options.useSmartEnhance ? 'from-pink-600 via-indigo-600 to-purple-600 animate-gradient-fast' : 'from-indigo-600 via-purple-600 to-indigo-600'} transition-all duration-1000 ${isGenerating ? 'animate-gradient' : ''}`}></div>
                             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
                             <span className="relative z-10 flex items-center justify-center gap-2">
-                                {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                                {isGenerating ? 'Procesando...' : 'Generar Arte'}
+                                {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : (options.useSmartEnhance ? <BrainCircuit className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />)}
+                                {isGenerating ? 'Procesando...' : (options.useSmartEnhance ? 'GENERAR (HYBRID MODE)' : 'GENERAR ARTE')}
                             </span>
                         </button>
                     </Tooltip>
@@ -661,6 +737,10 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                                             <label className="text-[10px] font-bold text-white/50 uppercase">Posición Y</label>
                                             <input type="range" min="-50" max="50" value={overrideConfig.wordBoxOffsetY || 0} onChange={(e) => setOverrideConfig({ ...overrideConfig, wordBoxOffsetY: Number(e.target.value) })} className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                         </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-white/50 uppercase">Escala (Tamaño)</label>
+                                            <input type="range" min="0.50" max="1.50" step="0.05" value={overrideConfig.wordBoxScale || 1} onChange={(e) => setOverrideConfig({ ...overrideConfig, wordBoxScale: Number(e.target.value) })} className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                        </div>
                                     </>
                                 )}
                                 {editTab === 'header' && (
@@ -816,6 +896,60 @@ export const ArtStudio: React.FC<ArtStudioProps> = ({ puzzle, config, onClose, o
                                             backgroundImage: currentVersion?.imageUrl || config.backgroundImage
                                         }}
                                     />
+                                )}
+                                {/* VISUAL LAYOUT OVERLAY - Shows Art Studio "Vision" */}
+                                {visualMetrics && (editTab !== 'global') && (
+                                    <div className="absolute inset-0 pointer-events-none z-50">
+                                        {/* WORD LIST BOX HIGHLIGHT */}
+                                        {(editTab === 'box') && visualMetrics.wordList && (
+                                            <div
+                                                className="absolute border-2 border-indigo-500 bg-indigo-500/10 flex items-start justify-center transition-all duration-300 animate-pulse"
+                                                style={{
+                                                    left: `${visualMetrics.wordList.x}%`,
+                                                    top: `${visualMetrics.wordList.y}%`,
+                                                    width: `${visualMetrics.wordList.width}%`,
+                                                    height: `${visualMetrics.wordList.height}%`
+                                                }}
+                                            >
+                                                <div className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-b shadow-lg flex items-center gap-1">
+                                                    <ScanEye className="w-3 h-3" />
+                                                    CAJA DETECTADA ({Math.round(visualMetrics.wordList.width)}% x {Math.round(visualMetrics.wordList.height)}%)
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* GRID HIGHLIGHT */}
+                                        {(editTab === 'grid') && visualMetrics.grid && (
+                                            <div
+                                                className="absolute border-2 border-emerald-500 bg-emerald-500/10 flex items-start justify-center transition-all duration-300"
+                                                style={{
+                                                    left: `${visualMetrics.grid.x}%`,
+                                                    top: `${visualMetrics.grid.y}%`,
+                                                    width: `${visualMetrics.grid.width}%`,
+                                                    height: `${visualMetrics.grid.height}%`
+                                                }}
+                                            >
+                                                <div className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-b shadow-lg">
+                                                    GRILLA ({Math.round(visualMetrics.grid.width)}% x {Math.round(visualMetrics.grid.height)}%)
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* TITLE HIGHLIGHT */}
+                                        {(editTab === 'header') && visualMetrics.title && (
+                                            <div
+                                                className="absolute border-2 border-pink-500 bg-pink-500/10 flex items-start justify-center transition-all duration-300"
+                                                style={{
+                                                    left: `${visualMetrics.title.x}%`,
+                                                    top: `${visualMetrics.title.y}%`,
+                                                    width: `${visualMetrics.title.width}%`,
+                                                    height: `${visualMetrics.title.height}%`
+                                                }}
+                                            >
+                                                <div className="bg-pink-600 text-white text-[10px] font-bold px-2 py-1 rounded-b shadow-lg">
+                                                    TÍTULO
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
