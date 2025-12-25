@@ -1,443 +1,48 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { generateWordListAI, generateThemeAI, generatePuzzleBackground, PROVIDER_PRESETS, testApiConnection, GEMINI_MODELS, DEEPSEEK_MODELS, GROK_MODELS } from './services/aiService';
-import { generatePuzzle, calculateSmartGridSize, generateThemeFromTopic } from './utils/puzzleGenerator';
+import { calculateSmartGridSize, generateThemeFromTopic, measurePuzzleElements } from './utils/puzzleGenerator';
+import { createPuzzleRemote } from './services/puzzleBackendClient';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { loadSettings, saveSettings, savePuzzleToLibrary, deletePuzzleFromLibrary, getLibrary, saveArtTemplate, deleteArtTemplate, createBookStack, addPuzzleToStack, deleteBookStack, removePuzzleFromStack, resetLibrary, getBookStacks, getArtLibrary, DEFAULT_SETTINGS, saveCustomTemplate, getCustomTemplates, deleteCustomTemplate } from './services/storageService';
 import { exportPuzzleImage } from './services/puzzleExportService';
+
+// --- Components ---
 import PuzzleSheet from './components/PuzzleSheet';
-import { GradientDefs } from './components/ui/GradientDefs';
-import { GlassCard } from './components/ui/GlassCard';
-import { Toast, ToastType } from './components/ui/Toast';
-import { Difficulty, GeneratedPuzzle, PuzzleTheme, AppSettings, SavedPuzzleRecord, PuzzleConfig, AIProvider, ShapeType, FontType, AISettings, ArtTemplate, PuzzleMargins, BookStack, ImageFilters, CustomTemplate, ElementEffects } from './types';
-import { Printer, RefreshCw, Wand2, Settings2, Grid3X3, Type, CheckCircle2, Hash, Dices, Palette, Sparkles, Save, FolderOpen, Trash2, X, BrainCircuit, Paintbrush, Heart, Circle, Square, MessageSquare, Gem, Star, Layout, List, MousePointerClick, ChevronRight, MonitorPlay, AlertTriangle, Check, Loader2, Network, FileDown, Activity, ShieldCheck, AlertCircle, Clock, Fingerprint, Gauge, Image, Eraser, ToggleLeft, ToggleRight, Download, HelpCircle, Move, ScanLine, RotateCcw, Book, Plus, FileJson, Library, ChevronDown, ChevronUp, Layers, Eye, Info, Sliders, FileText } from 'lucide-react';
-import { ArtStudio } from './components/ArtStudio';
-import { useNavigate } from 'react-router-dom';
-import { PropertyPanel } from './components/editor/PropertyPanel';
-import { EditorElementId } from './components/editor/types';
 import { CollapsibleSection } from './components/ui/CollapsibleSection';
-import { ColorPicker, COLOR_PRESETS, ColorPresetButton } from './components/ui/ColorPicker';
-import { LayoutConfig } from './features/artstudio/lib/types';
-import { measurePuzzleElements, PuzzleStructure } from './features/artstudio/lib/spatialUtils';
+import { Tooltip } from './components/Tooltip';
+import { GradientDefs } from './components/ui/GradientDefs';
 import { AssetBrowser } from './features/design_library/components/AssetBrowser';
-import { DesignAssetInstance } from './types';
+import { MarginControl } from './components/ui/MarginControl';
+import { GlassCard } from './components/ui/GlassCard';
+import { Toast } from './components/ui/Toast';
+import { SystemDiagnostics } from './features/diagnostics/SystemDiagnostics';
+import { ProviderSettingsForm } from './features/settings/ProviderSettingsForm';
+import { ColorPicker, COLOR_PRESETS, ColorPresetButton } from './components/ui/ColorPicker';
+import { EmptyState } from './components/ui/EmptyState';
+import { DESIGN_PRESETS, DesignPreset } from './components/presets/designPresets';
+
+// --- Icons ---
+import {
+    BrainCircuit, Move, Activity, Settings2, Sliders, Sparkles, Wand2, Loader2, Layout,
+    Square, Circle, Heart, Star, List, Plus, X, MessageSquare, Type, ScanLine,
+    Grid3X3, Palette, BoxSelect, Download, FileJson, Trash2, Save, FileUp, Image as ImageIcon,
+    CheckCircle2, Printer, FileText, Layers, Check, Eraser, RefreshCw, FolderOpen,
+    AlertTriangle, Book, Eye, Info,
+    Briefcase, Zap, Minus, EyeOff // Added missing icons
+} from 'lucide-react';
+
+// --- Types ---
+import { AppSettings, Difficulty, PuzzleTheme, ShapeType, ImageFilters, FontType, SavedPuzzleRecord, BookStack, LayoutConfig, PuzzleStructure, ToastType, DesignAsset, CustomTemplate, ElementEffects, PuzzleMargins, GeneratedPuzzle, EditorElementId, DesignAssetInstance, PuzzleConfig } from './types';
+
 const DIFFICULTY_PRESETS = {
-    [Difficulty.EASY]: {
-        label: "Niños / Fácil",
-        defaultSize: 10,
-        recommendedWords: "8 - 12",
-        description: "Sin diagonales, sin invertidas. Grilla pequeña.",
-        color: "bg-emerald-500",
-        gridRange: [10, 14]
-    },
-    [Difficulty.MEDIUM]: {
-        label: "Estándar / Medio",
-        defaultSize: 15,
-        recommendedWords: "15 - 20",
-        description: "Con diagonales. Sin invertidas. Grilla mediana.",
-        color: "bg-blue-500",
-        gridRange: [14, 18]
-    },
-    [Difficulty.HARD]: {
-        label: "Experto / Difícil",
-        defaultSize: 20,
-        recommendedWords: "25 - 40",
-        description: "¡Caos total! 8 direcciones. Alta densidad.",
-        color: "bg-purple-600",
-        gridRange: [18, 30]
-    }
+    [Difficulty.EASY]: { label: 'Fácil', defaultSize: 10, recommendedWords: '5-8', gridRange: [8, 12] },
+    [Difficulty.MEDIUM]: { label: 'Medio', defaultSize: 15, recommendedWords: '10-15', gridRange: [12, 18] },
+    [Difficulty.HARD]: { label: 'Difícil', defaultSize: 20, recommendedWords: '18-25', gridRange: [16, 25] },
+    [Difficulty.EXPERT]: { label: 'Experto', defaultSize: 25, recommendedWords: '25-35', gridRange: [22, 30] }
 };
 
-const INITIAL_WORDS = ['REACT', 'TYPESCRIPT', 'TAILWIND', 'GEMINI', 'DEEPSEEK', 'GROQ', 'API', 'DATABASE'];
-
-// --- Componente Tooltip Reutilizable ---
-interface TooltipProps {
-    text: string;
-    children: React.ReactNode;
-    position?: 'top' | 'bottom' | 'right' | 'left';
-    className?: string;
-}
-
-const Tooltip: React.FC<TooltipProps> = ({
-    text,
-    children,
-    position = 'top',
-    className = ""
-}) => {
-    return (
-        <div className={`group relative flex items-center ${className}`}>
-            {children}
-            <div className={`
-        pointer-events-none absolute z-[70] hidden group-hover:block 
-        w-max max-w-[200px] bg-cosmic-900 text-white text-[10px] font-medium p-2 rounded-md shadow-xl border border-glass-border
-        text-center leading-tight whitespace-normal
-        ${position === 'top' ? 'bottom-full mb-2 left-1/2 -translate-x-1/2' : ''}
-        ${position === 'bottom' ? 'top-full mt-2 left-1/2 -translate-x-1/2' : ''}
-        ${position === 'right' ? 'left-full ml-2 top-1/2 -translate-y-1/2' : ''}
-        ${position === 'left' ? 'right-full mr-2 top-1/2 -translate-y-1/2' : ''}
-      `}>
-                {text}
-                <div className={`
-            absolute border-4 border-transparent 
-            ${position === 'top' ? 'top-full left-1/2 -translate-x-1/2 border-t-slate-900' : ''}
-            ${position === 'bottom' ? 'bottom-full left-1/2 -translate-x-1/2 border-b-slate-900' : ''}
-            ${position === 'right' ? 'right-full top-1/2 -translate-y-1/2 border-r-slate-900' : ''}
-            ${position === 'left' ? 'left-full top-1/2 -translate-y-1/2 border-l-slate-900' : ''}
-        `}></div>
-            </div>
-        </div>
-    );
-};
-
-// --- Componente MarginControl ---
-const MarginControl = ({
-    label,
-    value,
-    max,
-    onChange
-}: {
-    label: string;
-    value: number;
-    max: number;
-    onChange: (val: number) => void;
-}) => {
-    const [localText, setLocalText] = useState(value.toString());
-
-    useEffect(() => {
-        const parsedLocal = parseFloat(localText);
-        if (Math.abs(parsedLocal - value) > 0.001 || isNaN(parsedLocal)) {
-            setLocalText(value.toString());
-        }
-    }, [value]);
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const txt = e.target.value;
-        setLocalText(txt);
-
-        const val = parseFloat(txt);
-        if (!isNaN(val)) {
-            let effective = val;
-            if (effective > max) effective = max;
-            if (effective < 0) effective = 0;
-            onChange(effective);
-        } else {
-            if (txt === '') onChange(0);
-        }
-    };
-
-    const handleBlur = () => {
-        let val = parseFloat(localText);
-        if (isNaN(val)) val = 0;
-        if (val > max) val = max;
-        if (val < 0) val = 0;
-        const finalStr = val.toString();
-        setLocalText(finalStr);
-        onChange(val);
-    };
-
-    return (
-        <div className="bg-cosmic-900/50 p-2 rounded border border-glass-border/50 hover:border-indigo-500/30 transition-colors">
-            <div className="flex justify-between items-center mb-1.5 gap-2">
-                <span className="text-[10px] text-slate-400 font-medium">{label}</span>
-                <div className="relative flex items-center">
-                    <input
-                        type="text"
-                        inputMode="decimal"
-                        value={localText}
-                        onChange={handleInputChange}
-                        onBlur={handleBlur}
-                        className="w-12 text-right bg-cosmic-950 border border-glass-border rounded px-1 py-0.5 text-[10px] font-mono text-accent-300 focus:border-indigo-500 outline-none"
-                    />
-                    <span className="text-[9px] text-slate-500 ml-1">"</span>
-                </div>
-            </div>
-            <Tooltip text={`Ajustar margen ${label.toLowerCase()}`} position="top">
-                <input
-                    type="range"
-                    min="0"
-                    max={max}
-                    step="0.1"
-                    value={value}
-                    onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        onChange(val);
-                        setLocalText(val.toString());
-                    }}
-                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 block"
-                />
-            </Tooltip>
-        </div>
-    );
-};
-
-// --- Componente de Diagnóstico del Sistema ---
-const SystemDiagnostics = ({ settings, onClose }: { settings: AppSettings, onClose: () => void }) => {
-    const [results, setResults] = useState<any[]>([]);
-    const [isRunning, setIsRunning] = useState(false);
-    const [overallStatus, setOverallStatus] = useState<'pending' | 'success' | 'warning' | 'error'>('pending');
-
-    const runTests = async () => {
-        setIsRunning(true);
-        setResults([]);
-        setOverallStatus('pending');
-
-        const newResults = [];
-        let hasError = false;
-
-        const hasPdfLib = (window as any).html2pdf !== undefined;
-        newResults.push({
-            name: "Librería de Exportación PDF (html2pdf)",
-            status: hasPdfLib ? 'success' : 'error',
-            message: hasPdfLib ? "Cargada y lista para renderizar." : "No se encontró la librería. Recarga la página."
-        });
-        if (!hasPdfLib) hasError = true;
-
-        try {
-            localStorage.setItem('test_diagnostic', 'ok');
-            localStorage.removeItem('test_diagnostic');
-            newResults.push({
-                name: "Almacenamiento Local (Biblioteca)",
-                status: 'success',
-                message: "Permisos de escritura correctos."
-            });
-        } catch (e) {
-            newResults.push({
-                name: "Almacenamiento Local",
-                status: 'error',
-                message: "No se puede guardar en este navegador."
-            });
-            hasError = true;
-        }
-
-        const logicStart = performance.now();
-        const logicTest = await testApiConnection(settings.logicAI);
-        const logicTime = Math.round(performance.now() - logicStart);
-        newResults.push({
-            name: `API Lógica (${settings.logicAI.provider})`,
-            status: logicTest.success ? 'success' : 'error',
-            message: logicTest.message + (logicTest.success ? ` (${logicTime}ms)` : "")
-        });
-        if (!logicTest.success) hasError = true;
-
-        setResults(newResults);
-        setIsRunning(false);
-        setOverallStatus(hasError ? 'warning' : 'success');
-    };
-
-    useEffect(() => {
-        runTests();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    return (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-cosmic-900 text-white w-full max-w-lg rounded-2xl border border-glass-border shadow-2xl overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-glass-border flex justify-between items-center bg-cosmic-950">
-                    <h2 className="text-lg font-bold flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-emerald-400" /> Diagnóstico del Sistema
-                    </h2>
-                    <button onClick={onClose}><X className="w-5 h-5 text-slate-400 hover:text-white" /></button>
-                </div>
-
-                <div className="p-6 space-y-4">
-                    <div className="space-y-2">
-                        {results.map((res, idx) => (
-                            <div key={idx} className="bg-cosmic-800 p-3 rounded-lg flex items-center justify-between border border-glass-border">
-                                <div className="flex items-center gap-3">
-                                    {res.status === 'success' ? (
-                                        <div className="bg-green-500/20 p-1.5 rounded-full text-green-400">
-                                            <Check className="w-4 h-4" />
-                                        </div>
-                                    ) : (
-                                        <div className="bg-red-500/20 p-1.5 rounded-full text-red-400">
-                                            <X className="w-4 h-4" />
-                                        </div>
-                                    )}
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-slate-200">{res.name}</span>
-                                        <span className={`text-[10px] ${res.status === 'success' ? 'text-slate-400' : 'text-red-300'}`}>
-                                            {res.message}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="p-4 border-t border-glass-border bg-cosmic-950 flex justify-end gap-2">
-                    <button
-                        onClick={onClose}
-                        className="px-6 py-2 bg-accent-600 hover:bg-accent-500 text-white rounded-lg font-bold text-sm shadow-lg transition-all"
-                    >
-                        Cerrar
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Componente de Configuración de Proveedor ---
-const ProviderSettingsForm = ({
-    title,
-    icon: Icon,
-    settings,
-    onUpdate
-}: {
-    title: string;
-    icon: any;
-    settings: AISettings;
-    onUpdate: (s: AISettings) => void;
-}) => {
-    const [selectedPreset, setSelectedPreset] = useState<string>('gemini');
-    const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const [testMessage, setTestMessage] = useState('');
-
-    useEffect(() => {
-        if (settings.provider === 'gemini') {
-            setSelectedPreset('gemini');
-        } else if (settings.baseUrl?.includes('deepseek')) {
-            setSelectedPreset('deepseek');
-        } else if (settings.baseUrl?.includes('x.ai')) {
-            setSelectedPreset('grok');
-
-        } else if (settings.provider === 'openai_compatible') {
-            setSelectedPreset('custom');
-        }
-    }, [settings.provider, settings.baseUrl]);
-
-    const handlePresetChange = (presetKey: string) => {
-        setSelectedPreset(presetKey);
-        const preset = PROVIDER_PRESETS[presetKey as keyof typeof PROVIDER_PRESETS];
-
-        onUpdate({
-            ...settings,
-            provider: preset.id as AIProvider, // Use the ID (grok, deepseek) not the generic type
-            baseUrl: preset.baseUrl,
-            modelName: preset.defaultModel
-        });
-        setTestStatus('idle');
-    };
-
-    const runTest = async () => {
-        setTestStatus('loading');
-        setTestMessage('');
-        const result = await testApiConnection(settings);
-        setTestStatus(result.success ? 'success' : 'error');
-        setTestMessage(result.message);
-    };
-
-    return (
-        <div className="bg-cosmic-800/30 rounded-xl p-4 border border-glass-border space-y-4">
-            <div className="flex items-center gap-2 text-accent-300 border-b border-white/5 pb-2">
-                <Icon className="w-5 h-5" />
-                <h3 className="font-semibold text-sm">{title}</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                    <label className="block text-xs text-slate-400 mb-1 font-bold">Proveedor de IA</label>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                        {Object.values(PROVIDER_PRESETS).map((preset) => (
-                            <Tooltip key={preset.id} text={`Usar configuración predefinida para ${preset.name}`} position="top">
-                                <button
-                                    onClick={() => handlePresetChange(preset.id)}
-                                    className={`w-full text-xs p-2 rounded-lg border transition-all flex flex-col items-center justify-center gap-1 text-center h-16 ${selectedPreset === preset.id
-                                        ? 'bg-accent-600/20 border-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.3)]'
-                                        : 'bg-cosmic-800 border-glass-border text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                                        }`}
-                                >
-                                    <Network className={`w-4 h-4 ${selectedPreset === preset.id ? 'text-accent-400' : 'opacity-50'}`} />
-                                    <span className="line-clamp-1 scale-90">{preset.name}</span>
-                                </button>
-                            </Tooltip>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="md:col-span-2">
-                    <label className="block text-xs text-slate-400 mb-1 font-bold">API Key <span className="text-red-400">*</span></label>
-                    <div className="flex gap-2">
-                        <input
-                            type="password"
-                            value={settings.apiKey}
-                            onChange={(e) => {
-                                const newKey = e.target.value;
-                                let newSettings = { ...settings, apiKey: newKey };
-
-                                // Auto-detect Grok
-                                if (newKey.startsWith('xai-') && selectedPreset !== 'grok') {
-                                    handlePresetChange('grok');
-                                    // handlePresetChange updates state async, so we need to ensure settings are consistent
-                                    // But handlePresetChange calls onUpdate, so we might have a race condition if we call onUpdate here too.
-                                    // Better approach: Just call handlePresetChange, and let the user re-paste if needed? 
-                                    // No, that's annoying.
-
-                                    // Let's manually construct the update for Grok
-                                    const grokPreset = PROVIDER_PRESETS['grok'];
-                                    newSettings = {
-                                        ...newSettings,
-                                        provider: grokPreset.id as AIProvider,
-                                        baseUrl: grokPreset.baseUrl,
-                                        modelName: grokPreset.defaultModel
-                                    };
-                                    setSelectedPreset('grok');
-                                }
-
-                                onUpdate(newSettings);
-                            }}
-                            placeholder={selectedPreset === 'gemini' ? "Usando variable de entorno (opcional sobreescribir)" : "sk-..."}
-                            className="flex-1 bg-cosmic-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-accent-300 focus:border-indigo-500 outline-none"
-                        />
-                        <button
-                            onClick={runTest}
-                            disabled={testStatus === 'loading'}
-                            className={`px-3 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${testStatus === 'success' ? 'bg-green-500/20 border-green-500 text-green-400' :
-                                testStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
-                                    'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
-                                }`}
-                        >
-                            {testStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Network className="w-4 h-4" />}
-                        </button>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-xs text-slate-400 mb-1 font-bold">Modelo</label>
-                    {selectedPreset !== 'custom' ? (
-                        <select
-                            value={settings.modelName}
-                            onChange={(e) => onUpdate({ ...settings, modelName: e.target.value })}
-                            className="w-full bg-cosmic-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-slate-300 focus:border-indigo-500 outline-none appearance-none"
-                        >
-                            {selectedPreset === 'gemini' && GEMINI_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            {selectedPreset === 'deepseek' && DEEPSEEK_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            {selectedPreset === 'grok' && GROK_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-
-                        </select>
-                    ) : (
-                        <input
-                            type="text"
-                            value={settings.modelName}
-                            onChange={(e) => onUpdate({ ...settings, modelName: e.target.value })}
-                            className="w-full bg-cosmic-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-slate-300 focus:border-indigo-500 outline-none"
-                            placeholder="Nombre del modelo..."
-                        />
-                    )}
-                </div>
-                <div className={selectedPreset === 'gemini' ? 'opacity-50 pointer-events-none' : ''}>
-                    <label className="block text-xs text-slate-400 mb-1 font-bold">Base URL</label>
-                    <input
-                        type="text"
-                        value={settings.baseUrl || ''}
-                        onChange={(e) => onUpdate({ ...settings, baseUrl: e.target.value })}
-                        disabled={selectedPreset === 'gemini'}
-                        className="w-full bg-cosmic-900 border border-slate-600 rounded px-3 py-2 text-sm font-mono text-slate-400 focus:border-indigo-500 outline-none"
-                    />
-                </div>
-            </div>
-        </div>
-    );
-};
+const INITIAL_WORDS = ['SOPA', 'LETRAS', 'REACT', 'VITE', 'TAILWIND'];
 
 export default function EditorPage() {
     // --- Global Settings & Modals ---
@@ -520,7 +125,7 @@ export default function EditorPage() {
 
     // --- Puzzle Config State ---
     const [title, setTitle] = useState('Sopa de Letras');
-    const [headerLeft, setHeaderLeft] = useState('Dificultad: Media');
+    const [headerLeft, setHeaderLeft] = useState(''); // Empty to allow dynamic default
     const [headerRight, setHeaderRight] = useState(''); // Vacío para libros
     const [footerText, setFooterText] = useState('Generado con SopaCreator AI');
     const [pageNumber, setPageNumber] = useState('');
@@ -552,7 +157,7 @@ export default function EditorPage() {
     const [headerEffects, setHeaderEffects] = useState<ElementEffects>({});
     const [gridEffects, setGridEffects] = useState<ElementEffects>({});
     const [wordListEffects, setWordListEffects] = useState<ElementEffects>({});
-    const [designTheme, setDesignTheme] = useState<'minimal' | 'classic' | 'kids' | 'modern'>('modern'); // New Theme State
+    const [designTheme, setDesignTheme] = useState<'minimal' | 'classic' | 'kids' | 'modern' | 'invisible'>('modern'); // New Theme State
     const [isManualTheme, setIsManualTheme] = useState(false); // Track if user manually selected theme
     const [showBorders, setShowBorders] = useState(true); // New: Border Toggle
     const [hiddenMessage, setHiddenMessage] = useState('');
@@ -594,7 +199,7 @@ export default function EditorPage() {
     const [selectedBookId, setSelectedBookId] = useState<string>('');
     const [newBookName, setNewBookName] = useState('');
     const [newBookTarget, setNewBookTarget] = useState(40);
-    const [activeLibraryTab, setActiveLibraryTab] = useState<'puzzles' | 'books'>('puzzles');
+    const [activeLibraryTab, setActiveLibraryTab] = useState<'puzzles' | 'books'>('books');
 
     // --- Editor State ---
     const [isEditMode, setIsEditMode] = useState(true);
@@ -692,7 +297,7 @@ export default function EditorPage() {
         }
     };
 
-    const handleGeneratePuzzle = useCallback((forceSeed?: string, forceWords?: string[], forceTheme?: PuzzleTheme, forceNewSeed: boolean = false) => {
+    const handleGeneratePuzzle = useCallback(async (forceSeed?: string, forceWords?: string[], forceTheme?: PuzzleTheme, forceNewSeed: boolean = false) => {
         // [FIX] Deterministic Grid: Prefer currentSeed if we are just updating settings (not forcing new)
         let seedToUse = forceSeed;
         if (!seedToUse) {
@@ -732,9 +337,15 @@ export default function EditorPage() {
             // setThemeData(generateThemeFromTopic(themeSource));
         }
 
-        const puzzle = generatePuzzle(widthToUse, heightToUse, wordsToUse, difficulty, seedToUse, maskShape, hiddenMessage);
-        setGeneratedPuzzle(puzzle);
-        setCurrentSeed(puzzle.seed);
+        try {
+            // Remote Call: createPuzzleRemote(words, width, height, difficulty, seed, hiddenMessage)
+            const puzzle = await createPuzzleRemote(wordsToUse, widthToUse, heightToUse, difficulty, seedToUse, hiddenMessage);
+            setGeneratedPuzzle(puzzle);
+            setCurrentSeed(puzzle.seed);
+        } catch (error) {
+            console.error("Error generating puzzle:", error);
+            showToast("Error generando sopa: " + (error as any).message, 'error');
+        }
 
 
     }, [gridSize, gridRows, wordList, difficulty, seedInput, isSmartGrid, maskShape, hiddenMessage]); // Removed 'topic'
@@ -1168,7 +779,9 @@ export default function EditorPage() {
     // Memoize config to prevent re-renders of PuzzleSheet when unrelated state changes
     const puzzleConfig: PuzzleConfig = useMemo(() => ({
         ...settings,
-        title, headerLeft, headerRight, footerText, pageNumber,
+        title,
+        headerLeft: headerLeft || `DIFICULTAD: ${(DIFFICULTY_PRESETS[difficulty]?.label || difficulty).toUpperCase()}`,
+        headerRight, footerText, pageNumber,
         difficulty, gridSize, gridHeight: gridRows, words: wordList, showSolution,
         styleMode, themeData, maskShape, hiddenMessage, fontType, margins,
         designTheme, showBorders,
@@ -1238,18 +851,18 @@ export default function EditorPage() {
                         <Tooltip text={isEditMode ? "Salir del Editor" : "Editor Visual"} position="bottom">
                             <button
                                 onClick={() => setIsEditMode(!isEditMode)}
-                                className={`p-2 rounded-lg transition-all ${isEditMode ? 'bg-accent-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                                className={`p-2 rounded-lg transition-all ${isEditMode ? 'bg-accent-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
                             >
                                 <Move className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip text="Diagnóstico del Sistema" position="bottom">
-                            <button onClick={() => setShowDiagnostics(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-emerald-400">
+                            <button onClick={() => setShowDiagnostics(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300 hover:text-emerald-400">
                                 <Activity className="w-4 h-4" />
                             </button>
                         </Tooltip>
                         <Tooltip text="Configuración Global API" position="bottom">
-                            <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-400 hover:text-white">
+                            <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-slate-300 hover:text-white">
                                 <Settings2 className="w-4 h-4" />
                             </button>
                         </Tooltip>
@@ -1258,14 +871,14 @@ export default function EditorPage() {
                         <div className="flex bg-cosmic-800 p-0.5 rounded-lg border border-glass-border ml-2">
                             <button
                                 onClick={() => setActiveSidebarTab('properties')}
-                                className={`p-1.5 rounded transition-colors ${activeSidebarTab === 'properties' ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                className={`p-1.5 rounded transition-colors ${activeSidebarTab === 'properties' ? 'bg-indigo-500 text-white' : 'text-slate-300 hover:text-white'}`}
                                 title="Propiedades"
                             >
                                 <Sliders className="w-3.5 h-3.5" />
                             </button>
                             <button
                                 onClick={() => setActiveSidebarTab('library')}
-                                className={`p-1.5 rounded transition-colors ${activeSidebarTab === 'library' ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                className={`p-1.5 rounded transition-colors ${activeSidebarTab === 'library' ? 'bg-indigo-500 text-white' : 'text-slate-300 hover:text-white'}`}
                                 title="Biblioteca de Diseño"
                             >
                                 <Sparkles className="w-3.5 h-3.5" />
@@ -1281,6 +894,10 @@ export default function EditorPage() {
                             activeSidebarTab === 'library' ? (
                                 <AssetBrowser />
                             ) : (
+                                <div className="p-10 text-slate-300 text-center">
+                                    Property Panel Disabled
+                                </div>
+                                /*
                                 <PropertyPanel
                                     selectedElement={selectedElement}
                                     config={puzzleConfig}
@@ -1325,6 +942,7 @@ export default function EditorPage() {
                                         if (updates.wordListEffects !== undefined) setWordListEffects(updates.wordListEffects);
                                     }}
                                 />
+                                */
                             )
                         ) : (
                             <div className="p-6 space-y-6">
@@ -1348,7 +966,7 @@ export default function EditorPage() {
 
                                         <div className="space-y-3 relative z-10">
                                             <div>
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Tema o Tópico</label>
+                                                <label className="text-[10px] font-bold text-slate-300 uppercase mb-1.5 block">Tema o Tópico</label>
                                                 <div className="flex gap-2">
                                                     <div className="relative flex-1 group/input">
                                                         <input
@@ -1379,7 +997,7 @@ export default function EditorPage() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Dificultad</label>
+                                                <label className="text-[10px] font-bold text-slate-300 uppercase mb-1.5 block">Dificultad</label>
                                                 <select
                                                     value={difficulty}
                                                     onChange={(e) => handleDifficultyChange(e.target.value as Difficulty)}
@@ -1391,7 +1009,7 @@ export default function EditorPage() {
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Forma Máscara</label>
+                                                <label className="text-[10px] font-bold text-slate-300 uppercase mb-1.5 block">Forma Máscara</label>
                                                 <div className="flex bg-cosmic-900 border border-glass-border rounded-lg p-1 gap-1">
                                                     {(['SQUARE', 'CIRCLE', 'HEART', 'STAR'] as ShapeType[]).map(shape => (
                                                         <button
@@ -1412,7 +1030,7 @@ export default function EditorPage() {
 
                                         <div className="space-y-3 pt-2 border-t border-white/5">
                                             <div className="flex justify-between items-center">
-                                                <label className="text-[10px] font-bold text-slate-400 uppercase">Dimensiones Grilla</label>
+                                                <label className="text-[10px] font-bold text-slate-300 uppercase">Dimensiones Grilla</label>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] text-slate-500">Auto-ajuste</span>
                                                     <button
@@ -1650,7 +1268,7 @@ export default function EditorPage() {
                         onClick={handleExportImage}
                         className="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 font-bold text-sm"
                     >
-                        <Image className="w-4 h-4" />
+                        <ImageIcon className="w-4 h-4" />
                         Imagen
                     </button>
 
@@ -1747,9 +1365,57 @@ export default function EditorPage() {
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar p-6 space-y-8">
                     {/* Section 4: Estilo y Arte (Moved) */}
                     <section className="space-y-4">
-                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2 mb-4">
                             <Palette className="w-4 h-4 text-purple-400" /> Estilo & Tema
                         </h2>
+
+                        {/* SYSTEM PRESETS */}
+                        <div className="mb-6">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-2">Estilos Predefinidos (IA)</span>
+                            <div className="grid grid-cols-2 gap-2">
+                                {DESIGN_PRESETS.map((preset) => (
+                                    <button
+                                        key={preset.id}
+                                        onClick={() => {
+                                            // 1. Apply Theme (Structure/Shape)
+                                            setDesignTheme(preset.designTheme);
+                                            setShowBorders(preset.showBorders);
+
+                                            // 2. Apply Colors (Palette)
+                                            if (preset.themeData) setThemeData(preset.themeData);
+
+                                            // Ensure we switch to color logic
+                                            if (preset.id !== 'preset_invisible') {
+                                                setStyleMode('color');
+                                                setBackgroundImage(undefined);
+                                            }
+
+                                            // CRITICAL FIX: Do NOT overwrite Layout Format (Margins/Fonts)
+                                            // The user wants these to remain fixed unless explicitly changed in their respective settings panels.
+                                            // if (preset.fontType) setFontType(preset.fontType);
+                                            // if (preset.margins) setMargins(preset.margins);
+
+                                            showToast(`Estilo "${preset.label}" aplicado (Formato mantenido)`, 'success');
+                                        }}
+                                        className="group relative flex items-center justify-between p-3 rounded-xl border border-white/5 bg-cosmic-800 hover:bg-cosmic-700 hover:border-indigo-500/50 transition-all text-left"
+                                    >
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200 group-hover:text-white">{preset.label}</span>
+                                            <span className="text-[9px] text-slate-500 truncate max-w-[100px]">{preset.id.replace('preset_', '')}</span>
+                                        </div>
+                                        <div className="flex -space-x-1">
+                                            {preset.previewColors.map((color, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="w-3 h-3 rounded-full border border-white/10 ring-1 ring-black/20"
+                                                    style={{ backgroundColor: color }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <div className="grid grid-cols-2 gap-3">
                             <button
@@ -1759,7 +1425,7 @@ export default function EditorPage() {
                                 <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 <div className="flex flex-col items-center gap-3 relative z-10">
                                     <div className="w-8 h-8 bg-white border-2 border-slate-200 rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300"></div>
-                                    <span className={`text-xs font-bold ${styleMode === 'bw' && !backgroundImage ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>B/N Clásico</span>
+                                    <span className={`text-xs font-bold ${styleMode === 'bw' && !backgroundImage ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>B/N Clásico</span>
                                 </div>
                             </button>
                             <button
@@ -1769,7 +1435,7 @@ export default function EditorPage() {
                                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 <div className="flex flex-col items-center gap-3 relative z-10">
                                     <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300"></div>
-                                    <span className={`text-xs font-bold ${styleMode === 'color' && !backgroundImage ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>Color Digital</span>
+                                    <span className={`text-xs font-bold ${styleMode === 'color' && !backgroundImage ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>Color Digital</span>
                                 </div>
                             </button>
                         </div>
@@ -1831,25 +1497,78 @@ export default function EditorPage() {
                         )}
 
                         <div className="space-y-2 pt-4 border-t border-white/5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tema Visual</label>
+                            <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">Estilo de Estructura (Formas y Fuentes)</label>
                             <div className="grid grid-cols-2 gap-2">
-                                {(['modern', 'classic', 'kids', 'minimal'] as const).map(theme => (
-                                    <button
-                                        key={theme}
-                                        onClick={() => { setDesignTheme(theme); setIsManualTheme(true); }}
-                                        className={`text-xs py-2.5 px-3 rounded-lg border capitalize transition-all duration-200 font-medium ${designTheme === theme
-                                            ? 'bg-accent-600 border-accent-500 text-white shadow-lg shadow-accent-500/20'
-                                            : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5 hover:text-white hover:border-white/10'
-                                            }`}
-                                    >
-                                        {theme}
-                                    </button>
-                                ))}
+                                {(['classic', 'modern', 'kids', 'minimal', 'invisible'] as const).map(theme => {
+                                    const isActive = designTheme === theme;
+                                    // Visual Preview Config based on Theme Type
+                                    const getThemeIcon = () => {
+                                        switch (theme) {
+                                            case 'modern': return <Zap className="w-4 h-4" />;
+                                            case 'kids': return <Star className="w-4 h-4" />;
+                                            case 'minimal': return <Minus className="w-4 h-4" />;
+                                            case 'invisible': return <EyeOff className="w-4 h-4" />;
+                                            default: return <Briefcase className="w-4 h-4" />;
+                                        }
+                                    };
+
+                                    const getThemeLabel = () => {
+                                        switch (theme) {
+                                            case 'modern': return 'Moderno';
+                                            case 'kids': return 'Kids / Pop';
+                                            case 'minimal': return 'Minimal';
+                                            case 'invisible': return 'Invisible';
+                                            default: return 'Clásico';
+                                        }
+                                    }
+
+                                    return (
+                                        <button
+                                            key={theme}
+                                            onClick={() => { setDesignTheme(theme); setIsManualTheme(true); }}
+                                            className={`relative h-14 rounded-xl border transition-all duration-200 overflow-hidden group text-left px-3 flex items-center justify-between ${isActive
+                                                ? 'bg-white/10 border-white/40 shadow-lg'
+                                                : 'bg-cosmic-900/50 border-white/5 hover:bg-white/5 hover:border-white/20'
+                                                }`}
+                                            // Dynamic Border Color using CURRENT THEME DATA to show "It adapts to your color"
+                                            style={{
+                                                borderColor: isActive ? (themeData?.primaryColor || '#6366f1') : undefined
+                                            }}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className={`p-1.5 rounded-lg ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}
+                                                    style={{
+                                                        backgroundColor: isActive ? (themeData?.primaryColor || '#6366f1') : 'transparent'
+                                                    }}
+                                                >
+                                                    {getThemeIcon()}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>
+                                                        {getThemeLabel()}
+                                                    </span>
+                                                    {isActive && <span className="text-[9px] text-white/50 leading-none">Activo</span>}
+                                                </div>
+                                            </div>
+
+                                            {/* Subtle indicator of shape */}
+                                            <div
+                                                className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 border-2 opacity-20 group-hover:opacity-40 transition-opacity pointer-events-none`}
+                                                style={{
+                                                    borderRadius: theme === 'modern' ? '8px' : theme === 'kids' ? '12px' : theme === 'classic' ? '2px' : '0px',
+                                                    borderColor: themeData?.primaryColor || 'currentColor',
+                                                    borderStyle: theme === 'invisible' ? 'dashed' : 'solid'
+                                                }}
+                                            />
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mostrar Bordes</label>
+                            <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Mostrar Bordes</label>
                             <button
                                 onClick={() => setShowBorders(!showBorders)}
                                 className={`w-9 h-5 rounded-full transition-colors relative ${showBorders ? 'bg-indigo-500' : 'bg-slate-700'}`}
@@ -1862,7 +1581,7 @@ export default function EditorPage() {
                         {/* Custom Templates Section */}
                         <div className="space-y-2 pt-4 border-t border-white/5">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                                     <Layers className="w-3 h-3" /> Mis Plantillas
                                 </label>
                                 <button
@@ -1927,7 +1646,7 @@ export default function EditorPage() {
                         </div>
 
                         <div className="space-y-3 pt-4 border-t border-white/5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Art Studio (IA)</label>
+                            <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Art Studio (IA)</label>
 
                             <div className="grid grid-cols-2 gap-2">
 
@@ -1984,7 +1703,7 @@ export default function EditorPage() {
 
                                 <div className="space-y-3">
                                     <div className="space-y-1">
-                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                        <div className="flex justify-between text-[10px] text-slate-300 font-bold uppercase tracking-wider">
                                             <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Opacidad Grilla</span>
                                             <span className="text-indigo-400">{Math.round(overlayOpacity * 100)}%</span>
                                         </div>
@@ -1998,7 +1717,7 @@ export default function EditorPage() {
                                     </div>
 
                                     <div className="space-y-1 pt-2 border-t border-white/5">
-                                        <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                        <div className="flex justify-between text-[10px] text-slate-300 font-bold uppercase tracking-wider">
                                             <span className="flex items-center gap-1"><Type className="w-3 h-3" /> Opacidad Textos</span>
                                             <span className="text-indigo-400">{Math.round(textOverlayOpacity * 100)}%</span>
                                         </div>
@@ -2016,7 +1735,7 @@ export default function EditorPage() {
 
 
                         <div className="space-y-2 pt-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipografía</label>
+                            <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Tipografía</label>
                             <div className="grid grid-cols-4 gap-1.5">
                                 {(['CLASSIC', 'MODERN', 'FUN', 'SCHOOL'] as FontType[]).map(ft => (
                                     <button
@@ -2024,7 +1743,7 @@ export default function EditorPage() {
                                         onClick={() => setFontType(ft)}
                                         className={`text-[9px] py-2 rounded-lg border transition-all duration-200 ${fontType === ft
                                             ? 'bg-accent-600 border-accent-500 text-white shadow-md shadow-accent-500/20 font-bold'
-                                            : 'bg-cosmic-900/50 border-white/5 text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                                            : 'bg-cosmic-900/50 border-white/5 text-slate-300 hover:bg-white/5 hover:text-white'}`}
                                     >
                                         {ft === 'CLASSIC' ? 'Mono' : ft === 'MODERN' ? 'Sans' : ft === 'FUN' ? 'Fun' : 'Sch'}
                                     </button>
@@ -2035,12 +1754,12 @@ export default function EditorPage() {
 
                     {/* Grid Visual Settings (Moved) */}
                     <section className="space-y-4">
-                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
+                        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
                             <Grid3X3 className="w-4 h-4 text-emerald-400" /> Ajustes Grilla
                         </h2>
                         {/* Grid Font Size Scale */}
                         <div className="mt-2 space-y-2">
-                            <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            <div className="flex justify-between text-[10px] text-slate-300 font-bold uppercase tracking-wider">
                                 <span>Tamaño Letra</span>
                                 <span className="text-emerald-400">{Math.round(gridFontSizeScale * 100)}%</span>
                             </div>
@@ -2095,6 +1814,7 @@ export default function EditorPage() {
                     </button>
 
                     <div className="w-full h-full max-w-[1600px]">
+                        {/* 
                         <ArtStudio
                             puzzle={generatedPuzzle}
                             config={{
@@ -2129,6 +1849,11 @@ export default function EditorPage() {
                                 setToast({ message: "Diseño aplicado correctamente", type: "success" });
                             }}
                         />
+                        */}
+                        <div className="flex flex-col items-center justify-center h-full text-white bg-cosmic-800 rounded-xl border border-white/10">
+                            <h2 className="text-2xl font-bold mb-4">Art Studio Disabled</h2>
+                            <p className="text-slate-300">Component disabled for debugging.</p>
+                        </div>
                     </div>
                 </div>
             )
@@ -2158,7 +1883,7 @@ export default function EditorPage() {
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     <Settings2 className="w-6 h-6 text-indigo-500" /> Configuración de IA
                                 </h2>
-                                <button onClick={() => setShowSettingsModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
+                                <button onClick={() => setShowSettingsModal(false)}><X className="w-6 h-6 text-slate-300 hover:text-white" /></button>
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
@@ -2200,13 +1925,13 @@ export default function EditorPage() {
                                     <Layers className="w-5 h-5 text-indigo-400" /> Guardar Plantilla
                                 </h2>
                                 <button onClick={() => setShowSaveTemplateModal(false)}>
-                                    <X className="w-5 h-5 text-slate-400 hover:text-white" />
+                                    <X className="w-5 h-5 text-slate-300 hover:text-white" />
                                 </button>
                             </div>
 
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <label className="text-xs text-slate-400 mb-1 block">Nombre de la plantilla</label>
+                                    <label className="text-xs text-slate-300 mb-1 block">Nombre de la plantilla</label>
                                     <input
                                         type="text"
                                         value={templateName}
@@ -2266,7 +1991,7 @@ export default function EditorPage() {
                                 <h2 className="text-lg font-bold flex items-center gap-2">
                                     <Save className="w-5 h-5 text-emerald-400" /> Guardar Proyecto
                                 </h2>
-                                <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-400 hover:text-white" /></button>
+                                <button onClick={() => setShowSaveModal(false)}><X className="w-5 h-5 text-slate-300 hover:text-white" /></button>
                             </div>
 
                             <div className="p-6 space-y-4">
@@ -2281,14 +2006,14 @@ export default function EditorPage() {
                                         />
                                         <div className="flex-1">
                                             <div className="font-bold text-sm">Guardar Individual</div>
-                                            <div className="text-[10px] text-slate-400">Guarda como puzzle suelto en la biblioteca.</div>
+                                            <div className="text-[10px] text-slate-300">Guarda como puzzle suelto en la biblioteca.</div>
                                         </div>
                                     </label>
 
                                     {/* New Input for Single Save Name */}
                                     {saveOption === 'single' && (
                                         <div className="ml-6 mt-2 animate-in fade-in slide-in-from-top-2">
-                                            <label className="text-[10px] text-slate-400 font-bold uppercase mb-1 block">Nombre del Archivo (En Biblioteca)</label>
+                                            <label className="text-[10px] text-slate-300 font-bold uppercase mb-1 block">Nombre del Archivo (En Biblioteca)</label>
                                             <input
                                                 type="text"
                                                 value={saveName}
@@ -2311,7 +2036,7 @@ export default function EditorPage() {
                                         />
                                         <div className={`flex-1 ${bookStacks.length === 0 ? 'opacity-50' : ''}`}>
                                             <div className="font-bold text-sm">Añadir a Libro Existente</div>
-                                            <div className="text-[10px] text-slate-400">Agrega una página a una colección.</div>
+                                            <div className="text-[10px] text-slate-300">Agrega una página a una colección.</div>
                                         </div>
                                     </label>
 
@@ -2338,7 +2063,7 @@ export default function EditorPage() {
                                         />
                                         <div className="flex-1">
                                             <div className="font-bold text-sm">Crear Nuevo Libro</div>
-                                            <div className="text-[10px] text-slate-400">Inicia una nueva colección de sopas.</div>
+                                            <div className="text-[10px] text-slate-300">Inicia una nueva colección de sopas.</div>
                                         </div>
                                     </label>
 
@@ -2352,7 +2077,7 @@ export default function EditorPage() {
                                                 className="w-full bg-cosmic-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white"
                                             />
                                             <div className="flex items-center gap-2">
-                                                <label className="text-[10px] text-slate-400">Meta de Páginas:</label>
+                                                <label className="text-[10px] text-slate-300">Meta de Páginas:</label>
                                                 <input
                                                     type="number"
                                                     value={newBookTarget}
@@ -2394,7 +2119,7 @@ export default function EditorPage() {
                                     >
                                         <Trash2 className="w-4 h-4" /> Resetear Todo
                                     </button>
-                                    <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-400 hover:text-white" /></button>
+                                    <button onClick={() => setShowLibraryModal(false)}><X className="w-6 h-6 text-slate-300 hover:text-white" /></button>
                                 </div>
                             </div>
 
@@ -2402,13 +2127,13 @@ export default function EditorPage() {
                             <div className="flex border-b border-glass-border bg-cosmic-800/50">
                                 <button
                                     onClick={() => setActiveLibraryTab('puzzles')}
-                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'puzzles' ? 'border-indigo-500 text-accent-400 bg-cosmic-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'puzzles' ? 'border-indigo-500 text-accent-400 bg-cosmic-800' : 'border-transparent text-slate-300 hover:text-white'}`}
                                 >
                                     <FileJson className="w-4 h-4" /> Puzzles Sueltos ({libraryPuzzles.length})
                                 </button>
                                 <button
                                     onClick={() => setActiveLibraryTab('books')}
-                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'books' ? 'border-amber-500 text-amber-400 bg-cosmic-800' : 'border-transparent text-slate-400 hover:text-white'}`}
+                                    className={`px-6 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeLibraryTab === 'books' ? 'border-amber-500 text-amber-400 bg-cosmic-800' : 'border-transparent text-slate-300 hover:text-white'}`}
                                 >
                                     <Book className="w-4 h-4" /> Libros / Colecciones ({bookStacks.length})
                                 </button>
@@ -2420,10 +2145,11 @@ export default function EditorPage() {
                                 {activeLibraryTab === 'puzzles' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {libraryPuzzles.length === 0 && (
-                                            <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
-                                                <FolderOpen className="w-12 h-12 mb-2 opacity-20" />
-                                                No hay puzzles guardados aún.
-                                            </div>
+                                            <EmptyState
+                                                icon={FolderOpen}
+                                                title="Biblioteca Vacía"
+                                                description="Aún no has guardado ningún puzzle. ¡Crea uno nuevo y guárdalo para verlo aquí!"
+                                            />
                                         )}
                                         {libraryPuzzles.map((p) => (
                                             <div key={p.id} className="bg-cosmic-800 border border-glass-border rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
@@ -2434,7 +2160,7 @@ export default function EditorPage() {
                                                             'bg-purple-500/20 text-purple-400'
                                                         }`}>{p.config.difficulty}</span>
                                                 </div>
-                                                <div className="text-xs text-slate-400 mb-4 font-mono">
+                                                <div className="text-xs text-slate-300 mb-4 font-mono">
                                                     Creado: {new Date(p.createdAt).toLocaleDateString()}
                                                 </div>
                                                 <div className="flex gap-2">
@@ -2461,10 +2187,11 @@ export default function EditorPage() {
                                 {activeLibraryTab === 'books' && (
                                     <div className="space-y-4">
                                         {bookStacks.length === 0 && (
-                                            <div className="col-span-full text-center py-20 text-slate-500 italic flex flex-col items-center">
-                                                <Book className="w-12 h-12 mb-2 opacity-20" />
-                                                No hay libros creados. Usa la opción "Guardar &gt; Crear Nuevo Libro".
-                                            </div>
+                                            <EmptyState
+                                                icon={Book}
+                                                title="Ningún Libro Creado"
+                                                description="Organiza tus puzzles en colecciones o libros. Usa la opción 'Guardar > Crear Nuevo Libro' para empezar."
+                                            />
                                         )}
                                         {bookStacks.map((book) => (
                                             <div key={book.id} className="bg-cosmic-800 border border-glass-border rounded-xl overflow-hidden">
@@ -2475,7 +2202,7 @@ export default function EditorPage() {
                                                         </div>
                                                         <div>
                                                             <h3 className="font-bold text-lg text-white">{book.name}</h3>
-                                                            <div className="text-xs text-slate-400 flex items-center gap-2">
+                                                            <div className="text-xs text-slate-300 flex items-center gap-2">
                                                                 <span>Progreso: {book.puzzles.length} / {book.targetCount} páginas</span>
                                                                 <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                                                     <div
@@ -2489,7 +2216,7 @@ export default function EditorPage() {
                                                     <div className="flex items-center gap-2">
                                                         <button
                                                             onClick={() => handleExportBookJson(book)}
-                                                            className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"
+                                                            className="p-2 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white"
                                                             title="Descargar JSON del Libro"
                                                         >
                                                             <Download className="w-4 h-4" />
@@ -2500,7 +2227,7 @@ export default function EditorPage() {
                                                                     deleteBookStack(book.id);
                                                                 }
                                                             }}
-                                                            className="p-2 hover:bg-red-900/30 rounded-lg text-slate-400 hover:text-red-400"
+                                                            className="p-2 hover:bg-red-900/30 rounded-lg text-slate-300 hover:text-red-400"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
                                                         </button>

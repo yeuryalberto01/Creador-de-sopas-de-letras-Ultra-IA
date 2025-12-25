@@ -1,12 +1,20 @@
+
 export enum Difficulty {
   EASY = 'Fácil',
   MEDIUM = 'Intermedio',
-  HARD = 'Difícil'
+  HARD = 'Difícil',
+  EXPERT = 'Experto'
 }
 
 export type ShapeType = 'SQUARE' | 'CIRCLE' | 'HEART' | 'DIAMOND' | 'STAR';
 export type FontType = 'CLASSIC' | 'MODERN' | 'FUN' | 'SCHOOL';
 export type FooterStyle = 'SIMPLE' | 'COMMERCIAL' | 'MODERN' | 'MINIMAL_QR' | 'TECH' | 'BARCODE' | 'ELEGANT';
+
+export type EditorElementId = string;
+export type LayoutConfig = any; // Placeholder for now
+export type PuzzleStructure = any; // Placeholder for now
+export type DesignAsset = DesignAssetInstance; // Alias to resolve mismatch
+
 
 export interface GridCell {
   letter: string;
@@ -49,7 +57,7 @@ export interface CustomTemplate {
   createdAt: number;
 
   // Style Configuration
-  designTheme: 'minimal' | 'classic' | 'kids' | 'modern';
+  designTheme: 'minimal' | 'classic' | 'kids' | 'modern' | 'invisible';
   showBorders: boolean;
   themeData: PuzzleTheme;
 
@@ -81,6 +89,7 @@ export interface ElementCoordinates {
   y: number;
 }
 
+
 export interface PuzzleConfig {
   title: string;
   headerLeft: string;
@@ -98,7 +107,7 @@ export interface PuzzleConfig {
   hiddenMessage?: string;
 
   // Appearance
-  designTheme?: 'minimal' | 'classic' | 'kids' | 'modern';
+  designTheme?: 'minimal' | 'classic' | 'kids' | 'modern' | 'invisible';
   showBorders?: boolean;
   margins?: PuzzleMargins;
   fontType?: FontType;
@@ -146,6 +155,7 @@ export interface PuzzleConfig {
   gridBackground?: string;
   gridBorderWidth?: string;
   gridRadius?: string;
+  gridShadow?: string;
   textShadow?: string;
   wordBoxVariant?: string;
   wordBoxScale?: number;
@@ -211,6 +221,8 @@ export interface GeneratedPuzzle {
   theme: PuzzleTheme;
   seed: string;
   timestamp?: number;
+  width?: number; // Added for Library display
+  height?: number; // Added for Library display
 }
 
 export interface AISettings {
@@ -349,3 +361,5 @@ export interface PuzzleSkin {
   description: string;
   previewEmoji?: string;       // opcional para UI
 }
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning';

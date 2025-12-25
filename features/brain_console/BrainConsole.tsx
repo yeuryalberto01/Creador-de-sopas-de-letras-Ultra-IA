@@ -13,7 +13,7 @@ import {
     Sparkles,
     Zap
 } from 'lucide-react';
-import { CustomTemplate, SavedPuzzleRecord } from '../../types';
+import { CustomTemplate, SavedPuzzleRecord, Difficulty } from '../../types';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getCustomTemplates, deleteCustomTemplate, getLibrary, deletePuzzleFromLibrary } from '../../services/storageService';
 import { useNavigate } from 'react-router-dom';
@@ -312,16 +312,14 @@ export const BrainConsole: React.FC = () => {
                                 <tr key={p.id} className="hover:bg-white/5 transition-colors">
                                     <td className="p-4 font-bold text-white">{p.name}</td>
                                     <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${p.config.difficulty === 'Fácil'
-                                                ? 'bg-emerald-900/50 text-emerald-400'
-                                                : p.config.difficulty === 'Medio'
-                                                    ? 'bg-amber-900/50 text-amber-400'
-                                                    : 'bg-red-900/50 text-red-400'
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${p.config.difficulty === Difficulty.EASY ? 'bg-emerald-900/50 text-emerald-400' :
+                                            p.config.difficulty === Difficulty.MEDIUM ? 'bg-amber-900/50 text-amber-400' :
+                                                'bg-red-900/50 text-red-400'
                                             }`}>
                                             {p.config.difficulty}
                                         </span>
                                     </td>
-                                    <td className="p-4">{p.config.wordCount || '?'} palabras</td>
+                                    <td className="p-4">{p.config.words?.length || '?'} palabras</td>
                                     <td className="p-4">{new Date(p.createdAt).toLocaleDateString()}</td>
                                     <td className="p-4 text-right">
                                         <button
@@ -397,8 +395,8 @@ export const BrainConsole: React.FC = () => {
                                 key={mod.id}
                                 onClick={() => setActiveModule(mod.id as ModuleType)}
                                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${isActive
-                                        ? `bg-gradient-to-r ${mod.color} text-white shadow-lg`
-                                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                    ? `bg-gradient-to-r ${mod.color} text-white shadow-lg`
+                                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                                     }`}
                             >
                                 <Icon className="w-4 h-4" />

@@ -125,12 +125,12 @@ export const DraggableElement: React.FC<DraggableElementProps> = ({
         >
             {children}
 
-            {/* Smart Label - Visible on Hover or Selection */}
-            {(isSelected || isEditMode) && (
+            {/* Smart Label - Visible ONLY on Hover or Selection, not just edit mode */}
+            {isSelected && (
                 <div className={`absolute -top-6 left-1/2 transform -translate-x-1/2 
                     bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded shadow-sm 
                     font-mono uppercase tracking-wider whitespace-nowrap transition-opacity duration-200 pointer-events-none
-                    ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                    opacity-100
                 `}>
                     {id}
                 </div>

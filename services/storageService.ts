@@ -3,7 +3,7 @@ import { DesignAsset } from '../features/design_library/types';
 import { db, migrateFromLocalStorage } from "../db";
 
 // Initialize DB and migration
-migrateFromLocalStorage();
+// migrateFromLocalStorage(); // MOVED TO App.tsx or useHook to prevent side-effects on import
 
 export const DEFAULT_SETTINGS: AppSettings = {
     logicAI: {

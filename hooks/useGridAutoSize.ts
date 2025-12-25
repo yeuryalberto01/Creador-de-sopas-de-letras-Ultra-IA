@@ -34,8 +34,10 @@ export const useGridAutoSize = (
                 const safeCols = gridCols > 0 ? gridCols : 10;
                 const safeRows = gridRows > 0 ? gridRows : 10;
 
-                const maxPossibleCellWidth = width / safeCols;
-                const maxPossibleCellHeight = height / safeRows;
+                // Subtract a large safety buffer (e.g. 48px) to safely clear margins, shadows, and borders.
+                const safetyBuffer = 48;
+                const maxPossibleCellWidth = (width - safetyBuffer) / safeCols;
+                const maxPossibleCellHeight = (height - safetyBuffer) / safeRows;
                 const maxFitCellSize = Math.min(maxPossibleCellWidth, maxPossibleCellHeight);
 
                 // 2. Determine actual cell size constrained by maxCellSize

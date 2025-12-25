@@ -392,9 +392,9 @@ export const PuzzleGrid: React.FC<PuzzleGridProps> = ({
 
         let containerClass = "w-full flex justify-between items-end mt-4 pt-4 border-t border-current opacity-80 text-[10px]";
 
-        if (layoutConfig.footerStyle === 'barcode') {
+        if (layoutConfig.footerStyle === 'BARCODE') {
             containerClass = "w-full flex justify-between items-center mt-6 p-3 bg-white/90 backdrop-blur border border-black rounded-md text-black";
-        } else if (layoutConfig.footerStyle === 'tech') {
+        } else if (layoutConfig.footerStyle === 'TECH') {
             containerClass = "w-full flex justify-between items-center mt-6 p-2 bg-black/80 backdrop-blur text-cyan-400 font-mono border-t border-cyan-500";
         }
 
@@ -466,7 +466,7 @@ export const PuzzleGrid: React.FC<PuzzleGridProps> = ({
                                     {row.map((letter, cIdx) => (
                                         <div
                                             key={`${rIdx}-${cIdx}`}
-                                            className={`flex items-center justify-center select-none capitalize ${gridFontClass}`}
+                                            className={`flex items-center justify-center select-none capitalize ${gridFontClass} relative`}
                                             style={{
                                                 ...gridFontStyle,
                                                 ...gridLetterStyle,
@@ -474,7 +474,16 @@ export const PuzzleGrid: React.FC<PuzzleGridProps> = ({
                                                 pointerEvents: letter.trim() === '' ? 'none' : 'auto'
                                             }}
                                         >
-                                            <span className="text-[1.6rem] leading-none" style={{ fontSize: layoutConfig.fontScale ? `${1.6 * layoutConfig.fontScale}rem` : '1.6rem' }}>{letter}</span>
+                                            <span
+                                                className="absolute inset-0 flex items-center justify-center leading-none"
+                                                style={{
+                                                    fontSize: layoutConfig.fontScale ? `${1.8 * layoutConfig.fontScale}rem` : '1.8rem',
+                                                    // Tweaks for visual centering depending on font
+                                                    transform: layoutConfig.fontFamilyGrid === 'MODERN' ? 'translateY(1px)' : 'none'
+                                                }}
+                                            >
+                                                {letter}
+                                            </span>
                                         </div>
                                     ))}
                                 </React.Fragment>

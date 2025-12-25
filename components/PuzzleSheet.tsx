@@ -13,6 +13,8 @@ interface PuzzleSheetProps {
     isPrintPreview?: boolean;
     onDrag?: (id: string, x: number, y: number) => void;
     onDoubleClick?: (id: string) => void;
+    isLoading?: boolean;
+    error?: string | null;
 }
 
 const getFontFamily = (fontType: FontType) => {
@@ -25,12 +27,41 @@ const getFontFamily = (fontType: FontType) => {
     }
 };
 
-const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, selectedElement, onSelectElement, isPrintPreview, onDrag, onDoubleClick }) => {
-    if (!puzzle || !puzzle.grid) {
+const PuzzleSheet: React.FC<PuzzleSheetProps> = ({ puzzle, config, isEditMode, selectedElement, onSelectElement, isPrintPreview, onDrag, onDoubleClick, isLoading, error }) => {
+    if (isLoading) {
         return (
-            <div className="w-[8.5in] h-[11in] bg-white flex items-center justify-center flex-col text-gray-400 animate-pulse">
+            <div className="w-[8.5in] h-[11in] bg-white flex items-center justify-center flex-col text-gray-400 animate-pulse transition-all duration-500">
                 <div className="w-16 h-16 border-4 border-gray-200 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
                 <p className="font-mono text-sm">Generando Sopa de Letras...</p>
+            </div>
+        );
+    }
+
+    if (!puzzle || !puzzle.grid) {
+        return (
+            <div className="w-[8.5in] h-[11in] bg-white flex items-center justify-center flex-col text-slate-400 p-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
+                {error ? (
+                    <>
+                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6 animate-in zoom-in duration-300">
+                            <span className="text-3xl">⚠️</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-700 mb-2">Ups, algo salió mal</h3>
+                        <p className="mb-6 text-slate-500 max-w-xs mx-auto">{error}</p>
+                        <div className="text-xs text-red-400 bg-red-50 px-4 py-2 rounded-lg font-mono">
+                            Verifica conexión con Backend (Puerto 8000)
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                            <span className="text-4xl">✨</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-700 mb-2">Lienzo Listo</h3>
+                        <p className="mb-6 text-slate-500 max-w-sm mx-auto">
+                            Configura el tema a la izquierda y tu sopa de letras aparecerá aquí mágicamente.
+                        </p>
+                    </>
+                )}
             </div>
         );
     }

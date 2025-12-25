@@ -1,8 +1,9 @@
 
 import React from 'react';
 import { EditorElementId } from './types';
-import { PuzzleConfig, ElementEffects } from '../../types';
-import { Type, Palette, Move, Maximize, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Layout, List, Square, Circle, Heart, Star, X, Plus, Grid3X3 } from 'lucide-react';
+import { PuzzleConfig } from '../../types';
+// Types needed for presets
+import { Type, Palette, Move, Maximize, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Layout, List, Square, Circle, Heart, Star, X, Plus, Grid3X3, Zap, Briefcase, GraduationCap, Sparkles } from 'lucide-react';
 import { CollapsibleSection } from '../../components/ui/CollapsibleSection';
 import { EffectsPanel } from './EffectsPanel';
 
@@ -12,7 +13,91 @@ interface PropertyPanelProps {
     onUpdateConfig: (updates: Partial<PuzzleConfig>) => void;
 }
 
+// 🎨 PRESETS DE ESTILO RÁPIDO
+const STYLE_PRESETS = {
+    'REGULAR': {
+        icon: <Grid3X3 className="w-4 h-4" />,
+        label: 'Estándar',
+        config: {
+            gridBorderColor: '#000000',
+            gridBorderWidth: '2px',
+            gridRadius: '8px',
+            gridBackground: '#ffffff',
+            fontFamilyGrid: 'MODERN',
+            boldGrid: true,
+            gridShadow: '4px 4px 0px rgba(0,0,0,0.2)',
+            gridEffects: { shadowEnabled: true, shadowColor: '#000000', shadowBlur: 0, shadowOffsetX: 4, shadowOffsetY: 4 }
+        }
+    },
+    'PROFESSIONAL': { // El "Hard Mode" solicitado
+        icon: <Briefcase className="w-4 h-4" />,
+        label: 'Profesional',
+        config: {
+            gridBorderColor: '#000000',
+            gridBorderWidth: '3px',
+            gridRadius: '0px',
+            gridBackground: '#ffffff',
+            fontFamilyGrid: 'MODERN',
+            boldGrid: true,
+            gridShadow: '6px 6px 0px #000000', // Sombra dura y sólida
+            gridEffects: {
+                shadowEnabled: true,
+                shadowColor: '#000000',
+                shadowBlur: 0,
+                shadowOffsetX: 6,
+                shadowOffsetY: 6,
+                outlineEnabled: true,
+                outlineColor: '#000000',
+                outlineWidth: 2
+            }
+        }
+    },
+    'KIDS': {
+        icon: <Sparkles className="w-4 h-4" />,
+        label: 'Infantil',
+        config: {
+            gridBorderColor: '#ff90e8',
+            gridBorderWidth: '4px',
+            gridRadius: '24px',
+            gridBackground: '#fff0f5',
+            fontFamilyGrid: 'FUN',
+            boldGrid: true,
+            gridShadow: '0 8px 0px #ff90e8',
+            gridEffects: {
+                shadowEnabled: true,
+                shadowColor: '#ff90e8',
+                shadowBlur: 0,
+                shadowOffsetY: 8
+            }
+        }
+    },
+    'CLASSIC': {
+        icon: <GraduationCap className="w-4 h-4" />,
+        label: 'Clásico',
+        config: {
+            gridBorderColor: '#000000',
+            gridBorderWidth: '1px',
+            gridRadius: '0px',
+            gridBackground: 'transparent',
+            fontFamilyGrid: 'CLASSIC',
+            boldGrid: false,
+            gridShadow: 'none',
+            gridEffects: { shadowEnabled: false }
+        }
+    }
+};
+
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, config, onUpdateConfig }) => {
+
+    // Función para aplicar un preset
+    const applyPreset = (presetKey: keyof typeof STYLE_PRESETS) => {
+        const preset = STYLE_PRESETS[presetKey];
+        // Hacemos un merge inteligente de las propiedades
+        onUpdateConfig({
+            ...preset.config as any
+        });
+    };
+
     const renderVocabularySection = () => (
         <CollapsibleSection title={`Vocabulario (${config.words?.length || 0})`} icon={List} defaultOpen={true}>
             <div className="space-y-3">
@@ -52,7 +137,6 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
         <div className="space-y-6 p-5">
             {/* --- LAYOUT & MARGINS --- */}
             <CollapsibleSection title="Márgenes y Estructura" icon={Move} defaultOpen={true}>
-                {/* ... (Existing Margin Layout Content) ... */}
                 <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                         {['top', 'bottom', 'left', 'right'].map((m) => (
@@ -87,6 +171,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                             <option value="classic">Clásico</option>
                             <option value="kids">Infantil</option>
                             <option value="minimal">Minimalista</option>
+                            <option value="invisible">Invisible (AI v8)</option>
                         </select>
                     </div>
                     <div className="flex gap-2">
@@ -107,8 +192,6 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
             </CollapsibleSection>
 
             {renderVocabularySection()}
-
-            {/* Added Advanced & Footer Sections as needed or kept from original but truncated for brevity in this replace block if not changing logic */}
         </div>
     );
 
@@ -160,7 +243,6 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                                         <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform left-0.5 ${config.boldHeader ? 'translate-x-4' : 'translate-x-0'}`} />
                                     </button>
                                 </div>
-                                {/* Header Left/Right fields */}
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-400 uppercase">Header Izquierda</label>
                                     <input
@@ -184,7 +266,6 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                             </div>
                         </CollapsibleSection>
 
-                        {/* 🎨 Canvas Effects for Header */}
                         <EffectsPanel
                             effects={config.headerEffects || {}}
                             onChange={(effects) => onUpdateConfig({ headerEffects: effects })}
@@ -198,6 +279,28 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                     <div className="space-y-6">
                         <CollapsibleSection title="Grilla" icon={Grid3X3} defaultOpen={true}>
                             <div className="space-y-4">
+                                <div className="bg-cosmic-800/50 p-2 rounded-lg border border-white/5 space-y-2 mb-4">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                        <Zap className="w-3 h-3 text-yellow-400" /> Presets Rápidos
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.entries(STYLE_PRESETS).map(([key, preset]) => (
+                                            <button
+                                                key={key}
+                                                onClick={() => applyPreset(key as any)}
+                                                className="flex items-center gap-2 px-2 py-2 rounded bg-cosmic-900 hover:bg-indigo-900/50 border border-white/5 hover:border-indigo-500/50 transition-all group"
+                                            >
+                                                <div className="p-1.5 rounded-md bg-white/5 text-slate-400 group-hover:text-white transition-colors">
+                                                    {preset.icon}
+                                                </div>
+                                                <span className="text-[10px] font-medium text-slate-300 group-hover:text-white">
+                                                    {preset.label}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-400 uppercase">Tamaño Grilla (NxN)</label>
                                     <input
@@ -251,7 +354,6 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                             </div>
                         </CollapsibleSection>
 
-                        {/* 🎨 Canvas Effects for Grid */}
                         <EffectsPanel
                             effects={config.gridEffects || {}}
                             onChange={(effects) => onUpdateConfig({ gridEffects: effects })}
@@ -288,14 +390,11 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({ selectedElement, c
                             </div>
                         </CollapsibleSection>
 
-                        {/* 🎨 Canvas Effects for WordList */}
                         <EffectsPanel
                             effects={config.wordListEffects || {}}
                             onChange={(effects) => onUpdateConfig({ wordListEffects: effects })}
                             elementName="Lista de Palabras"
                         />
-
-                        {renderVocabularySection()}
                     </div>
                 )}
             </div>

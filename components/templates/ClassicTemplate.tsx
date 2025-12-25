@@ -93,39 +93,176 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
     const gridWeight = config.boldGrid ? '700' : '400'; // Default normal
     const wordListWeight = config.boldWordList ? '700' : '400'; // Default normal
 
-    const getThemeStyles = () => {
-        const baseContentStyle = {
-            padding: '2rem',
-            transition: 'all 0.3s ease'
+    // --- OBJECT STYLES SYSTEM (REFACTORED) ---
+    // 2. Visual Theme Map - Strict Separation of Concerns
+
+    // A. Layout & Typography (Structure)
+    const getThemeLayout = () => {
+        // Base structure defaults
+        const base = {
+            titleFont: headerFont,
+            titleWeight: headerWeight,
+            gridFont: gridFont,
+            gridWeight: gridWeight,
+            gridRadius: '2px',
+            wordListFont: wordListFont,
+            wordListWeight: wordListWeight,
+            metaStyle: {
+                fontFamily: headerFont,
+                textTransform: 'none' as const,
+                letterSpacing: 'normal',
+                fontSize: '0.9rem',
+                borderStyle: 'solid' as const,
+                borderWidth: '1px 0',
+            },
+            gridShadow: '4px 4px 0px rgba(0,0,0,1)' // Default: Classic Retro Hard Shadow
         };
 
         if (designTheme === 'modern') {
             return {
-                containerClass: '',
-                titleStyle: { fontFamily: headerFont, fontWeight: headerWeight, textTransform: 'uppercase' as const, letterSpacing: '-0.02em', fontSize: '3rem' },
-                metaBarStyle: { fontFamily: headerFont, fontWeight: headerWeight === '700' ? '500' : '400', textTransform: 'uppercase' as const, letterSpacing: '0.1em', fontSize: '0.75rem', color: '#64748b' },
-                gridStyle: { borderRadius: '12px', fontFamily: gridFont, fontWeight: gridWeight },
-                wordListStyle: { fontFamily: wordListFont, fontWeight: wordListWeight }
+                ...base,
+                gridRadius: '16px', // Slightly more rounded for modern
+                gridShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', // Soft Elevation
+                titleStyle: {
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '-0.02em',
+                    fontSize: '3rem'
+                },
+                metaStyle: {
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.1em',
+                    fontSize: '0.75rem',
+                    borderWidth: '0'
+                }
             };
         }
 
-        // DEFAULT: EDITORIAL (The Standard)
+        if (designTheme === 'invisible' || designTheme === 'minimal') {
+            return {
+                ...base,
+                gridRadius: '0px',
+                gridShadow: designTheme === 'minimal' ? '0 1px 3px 0 rgba(0, 0, 0, 0.1)' : 'none', // Minimal has subtle shadow, Invisible has none
+                titleStyle: {
+                    fontFamily: headerFont || '"Playfair Display", serif',
+                    fontWeight: '900',
+                    fontSize: '3.0rem',
+                    letterSpacing: '-0.02em',
+                    marginBottom: '1rem',
+                    marginTop: '1rem',
+                    textAlign: 'center' as const
+                },
+                metaStyle: {
+                    fontFamily: '"Inter", sans-serif',
+                    fontWeight: '500',
+                    textTransform: 'uppercase' as const,
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.3em',
+                    borderWidth: '0',
+                    textAlign: 'center' as const,
+                    // Normalized spacing to match other themes and prevent jumpiness
+                    marginTop: '0.5rem',
+                    marginBottom: '1.5rem'
+                },
+                // Crucial: Invisible theme implies no grid borders structure
+                gridBorderStyle: 'none'
+            };
+        }
+
+        if (designTheme === 'kids') {
+            return {
+                ...base,
+                gridRadius: '24px', // Very rounded
+                gridShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)', // Soft playful
+            };
+        }
+
+        // Default: Classic/Editorial
+        return base;
+    };
+
+    // B. Color & Fill (Palette)
+    const getThemePalette = () => {
+        // 1. Force B/W if mode is 'bw'
+        if (!isColor) {
+            return {
+                primary: '#000000',
+                secondary: '#333333',
+                text: '#000000',
+                background: '#ffffff',
+                gridBorder: '#000000',
+                gridBackground: 'transparent',
+                metaColor: '#475569'
+            };
+        }
+
+        // 2. Color Mode: Use provided themeData or strict defaults
+        const primary = themeData?.primaryColor || '#1e293b';
+        const secondary = themeData?.secondaryColor || '#475569';
+        const text = themeData?.textColor || '#1e293b';
+        const bg = themeData?.backgroundColor || '#ffffff';
+
+        // Theme-specific color overrides (only defaults if user hasn't customized)
+        // Note: In a real "Theme" system, the theme might suggest colors, but themeData should win.
+        // We assume themeData IS the winner here.
+
         return {
-            containerClass: '',
-            contentStyle: { // Restored for compatibility
-                padding: '2rem',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column' as const
-            },
-            titleStyle: { fontFamily: headerFont, fontWeight: headerWeight, fontSize: '3.5rem', lineHeight: '1', color: '#1e293b' },
-            metaBarStyle: { fontFamily: headerFont, fontWeight: headerWeight === '700' ? '500' : '400', fontStyle: 'italic', fontSize: '0.9rem', color: '#475569', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', padding: '0.5rem 0', margin: '0.5rem 0 1.5rem 0' },
-            gridStyle: { borderRadius: '2px', fontFamily: gridFont, fontWeight: gridWeight }, // Sharp corners for print
-            wordListStyle: { fontFamily: wordListFont, fontWeight: wordListWeight }
+            primary,
+            secondary,
+            text,
+            background: bg,
+            gridBorder: primary, // In color mode, grid border usually matches primary
+            gridBackground: config.gridBackground || '#ffffff',
+            metaColor: secondary
         };
     };
 
-    const themeStyles = getThemeStyles();
+    const layout = getThemeLayout();
+    const palette = getThemePalette();
+
+    // Compile Styles
+    const themeStyles = {
+        containerClass: '',
+        contentStyle: {
+            padding: '2rem',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column' as const,
+            backgroundColor: palette.background // Apply page background
+        },
+        titleStyle: {
+            fontFamily: layout.titleFont,
+            fontWeight: layout.titleWeight,
+            fontSize: (layout as any).titleStyle?.fontSize || '3.5rem',
+            lineHeight: (layout as any).titleStyle?.lineHeight || '1',
+            color: palette.primary, // Color derived from palette
+            ...(layout as any).titleStyle // Spread other layout props
+        },
+        metaBarStyle: {
+            fontFamily: layout.metaStyle.fontFamily,
+            fontWeight: layout.titleWeight === '700' ? '500' : '400',
+            fontStyle: designTheme === 'modern' ? 'normal' : 'italic',
+            fontSize: layout.metaStyle.fontSize,
+            color: palette.metaColor,
+            borderTop: layout.metaStyle.borderWidth !== '0' ? `1px solid ${palette.secondary}40` : 'none',
+            borderBottom: layout.metaStyle.borderWidth !== '0' ? `1px solid ${palette.secondary}40` : 'none',
+            padding: '0.5rem 0',
+            margin: '0.5rem 0 1.5rem 0',
+            ...(layout as any).metaStyle
+        },
+        gridStyle: {
+            borderRadius: layout.gridRadius,
+            fontFamily: layout.gridFont,
+            fontWeight: layout.gridWeight,
+            borderColor: (layout as any).gridBorderStyle === 'none' ? 'transparent' : palette.gridBorder,
+            backgroundColor: palette.gridBackground,
+            boxShadow: (layout as any).gridShadow
+        },
+        wordListStyle: {
+            fontFamily: layout.wordListFont,
+            fontWeight: layout.wordListWeight,
+            color: palette.text
+        }
+    };
 
     // SAFETY CHECK: Ensure contentStyle exists for the spread below
     const activeContentStyle = 'contentStyle' in themeStyles ? themeStyles.contentStyle : {};
@@ -137,40 +274,60 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
         gridWrapperRef,
         gridCols,
         gridRows,
-        54 // Increased MAX cell size for better visibility
+        200 // UNLIMITED: Allows the grid to expand as much as the paper permits
     );
 
-    // Font Size Logic
-    const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.65; // Slightly larger text
+    // Font Size Logic: Maximize readability (approx 95% of cell size)
+    const baseFontSizePx = Math.min(gridDimensions.width / gridCols, gridDimensions.height / gridRows) * 0.95;
     const fontSizePx = baseFontSizePx * (config.gridFontSizeScale || 1.0);
 
 
     // --- RENDER HELPERS ---
 
-    // Word List: Switch to Columns instead of Pills
+    // Word List: NEWSPAPER-STYLE MULTI-COLUMN LAYOUT
+    // Uses CSS columns for organized, balanced distribution
     const renderWordList = () => {
-        // Use columns for professional look
-        // Math Check: 3 cols typically fits 15-20 words in ~2 inches of height.
+        // Calculate optimal column count based on word count
+        const wordCount = words.length;
+        let columnCount = 4; // Default
+        if (wordCount <= 8) columnCount = 2;
+        else if (wordCount <= 15) columnCount = 3;
+        else if (wordCount <= 25) columnCount = 4;
+        else columnCount = 5;
+
         return (
-            <div className="w-full grid grid-cols-3 gap-x-4 gap-y-2 mt-4" style={{ fontFamily: themeStyles.wordListStyle.fontFamily, fontWeight: wordListWeight }}>
+            <div
+                className="w-full mt-4"
+                style={{
+                    fontFamily: themeStyles.wordListStyle.fontFamily,
+                    fontWeight: wordListWeight,
+                    columnCount: columnCount,
+                    columnGap: '2rem',
+                    columnRule: '1px solid #e5e7eb'
+                }}
+            >
                 {words.sort().map((word, idx) => {
                     return (
-                        <div key={idx} className="flex items-center space-x-2">
-                            {/* Checkbox Circle - Empty for player use */}
+                        <div
+                            key={idx}
+                            className="flex items-center space-x-3 py-1.5 break-inside-avoid"
+                        >
+                            {/* Checkbox Circle */}
                             <div
-                                className="w-4 h-4 rounded-full border border-gray-400 flex-shrink-0 flex items-center justify-center bg-transparent"
+                                className="w-4 h-4 rounded-full border-2 border-gray-400 flex-shrink-0 bg-white"
                             >
                             </div>
-                            {/* Word Text - Clear and legible */}
+                            {/* Word Text */}
                             <span
-                                className="text-sm tracking-wide text-gray-800"
+                                className="text-gray-800 uppercase"
                                 style={{
                                     fontFamily: themeStyles.wordListStyle.fontFamily,
-                                    fontWeight: wordListWeight,
-                                    fontSize: '0.9rem'
+                                    fontWeight: wordListWeight || '600',
+                                    fontSize: '0.85rem',
+                                    letterSpacing: '0.03em'
                                 }}
                             >
-                                {word}
+                                {word.replace(/_/g, ' ')}
                             </span>
                         </div>
                     );
@@ -228,9 +385,8 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
 
 
             {/* --- MAIN LAYOUT (Flex Column) --- */}
-            {/* Added pb-8 to ensure visual gap between bottom of list and footer margin */}
             <div
-                className="relative z-10 w-full h-full flex flex-col justify-start pb-8"
+                className="relative z-10 w-full h-full flex flex-col justify-between gap-6" // Added gap-6 to force distribution
                 style={{ ...activeContentStyle }}
             >
 
@@ -242,7 +398,7 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                     onSelect={onSelectElement}
                     onDrag={onDrag}
                     onDoubleClick={() => onDoubleClick?.('header')}
-                    className="mb-6"
+                    className="mb-2" // REDUCED: Give more space to the grid
                 >
                     <div
                         className={`w-full flex-shrink-0 text-center px-4 py-2 hover:bg-blue-50/10 transition-colors rounded-lg`}
@@ -280,7 +436,7 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
 
                 {/* 2. GRID OBJECT (Flexible Height) */}
                 <div
-                    className="flex-grow flex items-center justify-center w-full relative min-h-0 my-2"
+                    className="flex-grow flex items-center justify-center w-full relative min-h-0 py-2" // Added py-2 for visual breathing room
                     ref={gridWrapperRef}
                 >
                     <DraggableElement
@@ -290,65 +446,59 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                         onSelect={onSelectElement}
                         onDrag={onDrag}
                         onDoubleClick={() => onDoubleClick?.('grid')}
-                        className="relative"
+                        className="relative max-w-full max-h-full" // Ensure it doesn't overflow parent
                     >
-                        {/* Grid Container */}
+                        {/* Grid Container - PROFESSIONAL VECTOR STYLE ENFORCED */}
                         <div
-                            className="grid transition-all duration-300 relative group"
+                            className="grid transition-all duration-300 relative group overflow-hidden" // Added overflow-hidden
                             style={{
                                 display: 'grid',
-                                gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-                                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+                                gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, // Force strict width distribution
+                                gridTemplateRows: `repeat(${gridRows}, minmax(0, 1fr))`,    // Force strict height distribution
                                 width: `${gridDimensions.width}px`,
                                 height: `${gridDimensions.height}px`,
-                                backgroundColor: isPrintPreview ? 'transparent' : (backgroundImage ? `rgba(255,255,255,${overlayOpacity})` : 'transparent'),
-                                backdropFilter: backgroundImage ? 'blur(4px)' : 'none',
-                                borderRadius: '4px',
-                                boxShadow: (!isPrintPreview && backgroundImage) ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : 'none',
+                                // Force Solid White Background for Legibility
+                                backgroundColor: themeStyles.gridStyle.backgroundColor, // Use Palette
+                                // Sharp Black Borders (Vector Look) - REDUCED WEIGHT
+                                borderWidth: showBorders ? (config.gridBorderWidth || '2px') : '0px', // Respect showBorders
+                                borderColor: themeStyles.gridStyle.borderColor, // Use Palette
+                                borderStyle: 'solid',
+                                borderRadius: themeStyles.gridStyle.borderRadius, // Use Layout
+                                // Dynamic Shadow based on Theme
+                                boxShadow: config.gridShadow || themeStyles.gridStyle.boxShadow,
                                 ...getSelectionStyle('grid'),
                                 ...effectsToStyle(config.gridEffects)
                             }}
                             data-puzzle-object="grid"
                             data-measure-id="puzzle-grid-container"
                         >
-                            {/* Double Border Frame for "Pro" look (Optional based on theme, hardcoded here for editorial feel) */}
-                            {!isPrintPreview && showBorders && (
-                                <div className="absolute -inset-3 border-4 border-slate-900/5 rounded-xl pointer-events-none" />
-                            )}
-
                             {grid.map((row, y) => (
                                 row.map((cell, x) => {
                                     const isSolutionCell = showSolution && cell.isWord;
 
-                                    // Visual Logic: High Contrast Solution
+                                    // Professional Typography
                                     const finalColor = showSolution
-                                        ? (isSolutionCell ? '#ffffff' : '#0f172a')
-                                        : (isSolutionCell ? (isColor ? (themeData?.primaryColor || '#0f172a') : '#0f172a') : '#334155'); // Normal text
+                                        ? (isSolutionCell ? '#ffffff' : '#000000')
+                                        : '#000000'; // Pure Black
 
                                     const finalBg = showSolution && isSolutionCell
-                                        ? (isColor ? (themeData?.primaryColor || '#0f172a') : '#0f172a')
+                                        ? (isColor ? (themeData?.primaryColor || '#000000') : '#000000')
                                         : 'transparent';
 
-                                    const finalOpacity = showSolution && !isSolutionCell ? 0.15 : 1;
-                                    const finalScale = showSolution && isSolutionCell ? 1.15 : 1;
-                                    const finalWeight = showSolution && isSolutionCell ? '900' : gridWeight;
-                                    const finalShadow = showSolution && isSolutionCell ? '0 4px 6px -1px rgba(0, 0, 0, 0.3)' : 'none';
+                                    const finalWeight = showSolution && isSolutionCell ? '700' : '400'; // Lighter weight (was 500)
 
                                     return (
                                         <div
                                             key={`${x}-${y}`}
-                                            className="flex items-center justify-center select-none transition-all duration-300"
+                                            className="flex items-center justify-center select-none overflow-hidden antialiased" // Added antialiased
                                             style={{
-                                                fontSize: `${fontSizePx}px`,
-                                                fontFamily: gridFont,
+                                                fontSize: `${fontSizePx * 0.85}px`, // Reduced scale (0.95 -> 0.85)
+                                                lineHeight: '1', // Ensure line height matches font size to prevent expansion
+                                                fontFamily: '"Inter", "Arial", sans-serif', // Enforce generic readable font
                                                 fontWeight: finalWeight,
                                                 color: finalColor,
                                                 backgroundColor: finalBg,
-                                                opacity: finalOpacity,
-                                                transform: `scale(${finalScale})`,
-                                                borderRadius: isSolutionCell ? '6px' : '0',
-                                                boxShadow: finalShadow,
-                                                zIndex: isSolutionCell ? 10 : 1
+                                                borderRadius: isSolutionCell ? '0px' : '0', // Square highlight
                                             }}
                                         >
                                             {cell.isValid ? cell.letter : ''}
@@ -369,10 +519,10 @@ export const ClassicTemplate: React.FC<PuzzleTemplateProps> = ({
                     onSelect={onSelectElement}
                     onDrag={onDrag}
                     onDoubleClick={() => onDoubleClick?.('wordList')}
-                    className="mt-6"
+                    className="mt-2" // REDUCED: More vertical space for the grid
                 >
                     <div
-                        className="w-full flex-shrink-0 px-8 py-4 bg-slate-50 border-t-2 border-slate-100"
+                        className="w-full flex-shrink-0 px-8 py-2 bg-slate-50 border-t border-slate-100" // More compact padding
                         style={{
                             ...getSelectionStyle('wordList'),
                             ...effectsToStyle(config.wordListEffects),

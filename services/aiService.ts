@@ -320,13 +320,16 @@ export const generateWordListAI = async (settings: AISettings, topic: string, co
         2. **Content**: 
            - Quantity: Exactly ${count} words.
            - Language: Spanish.
-           - Text Normalization: UPPERCASE only, NO ACCENTS (Á->A), NO SPACES, NO SPECIAL CHARS.
+           - Text Normalization: UPPERCASE only, NO ACCENTS (Á->A).
+           - **CRITICAL**: SINGLE WORDS ONLY! No compound words, no phrases, no underscores.
+           - Examples of GOOD words: CASA, PERRO, ARBOL, CIELO, MESA
+           - Examples of BAD words: CASA_GRANDE, PERRO_NEGRO, DARK_MATTER (NEVER USE THESE!)
         3. **Difficulty Logic**:
-           - EASY: Short, common words (3-6 letters).
-           - MEDIUM: Standard vocabulary (5-10 letters).
-           - HARD: Complex, long, or technical terms related to "${topic}".
+           - EASY: Short, common words (3-6 letters). Example: SOL, LUNA, GATO
+           - MEDIUM: Standard vocabulary (5-8 letters). Example: CIELO, ARBOL, MESA
+           - HARD: Longer words but still SINGLE words (7-12 letters). Example: UNIVERSO, COMPUTADORA, MEDICINA
         
-        Output JSON ONLY.
+        Output JSON ONLY with simple, single Spanish words.
     `;
 
     // Gemini Schema definition
